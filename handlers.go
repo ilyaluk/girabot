@@ -111,7 +111,15 @@ func (s *server) handleText(c *customContext) error {
 			ChatID:    c.user.ID,
 			MessageID: c.user.CurrentTripMessageID,
 		}
-		_, err := s.bot.Edit(msg, "Thanks for the comment! Don't forget to submit the rating.")
+		// delete message with rating comment
+		if err := c.Delete(); err != nil {
+			return err
+		}
+		_, err := s.bot.Edit(
+			msg,
+			"Thanks for the comment! Don't forget to submit the rating.",
+			getStarButtons(c.user.CurrentTripRating.Rating),
+		)
 		return err
 	default:
 		return c.Send("Unknown state")
@@ -532,6 +540,9 @@ func (s *server) watchActiveTrip(c *customContext) error {
 	ticker := time.NewTicker(50*time.Second + time.Second*time.Duration(rand.Intn(20)))
 	defer ticker.Stop()
 
+	const toleratableErrors = 3
+	errs := 0
+
 	for range ticker.C {
 		err := s.updateActiveTrip(c)
 		if errors.Is(err, gira.ErrNoActiveTrip) {
@@ -555,7 +566,12 @@ func (s *server) watchActiveTrip(c *customContext) error {
 			return s.handleRate(c)
 		}
 		if err != nil {
-			return err
+			errs++
+			if errs > toleratableErrors {
+				return err
+			}
+			s.bot.OnError(fmt.Errorf("watching trip (err %d/%d): %v", errs, toleratableErrors, err), c)
+			continue
 		}
 	}
 
@@ -590,6 +606,10 @@ func (s *server) updateActiveTrip(c *customContext) error {
 }
 
 func (s *server) handleRate(c *customContext) error {
+	if c.user.CurrentTripCode == "" {
+		return c.Send("No last trip code, can't rate")
+	}
+
 	c.user.CurrentTripRating = gira.TripRating{}
 
 	m, err := s.bot.Send(c.Recipient(), "Please rate the bike:", getStarButtons(0))
@@ -658,12 +678,6 @@ func (s *server) handleRateAddText(c *customContext) error {
 }
 
 func (s *server) handleRateSubmit(c *customContext) error {
-	if err := c.Send(fmt.Sprintf(
-		"CurrentTripRating: %+v", c.user.CurrentTripRating,
-	)); err != nil {
-		return err
-	}
-
 	if c.user.CurrentTripCode == "" {
 		return c.Edit("No current trip code, can't submit rating")
 	}
@@ -683,7 +697,16 @@ func (s *server) handleRateSubmit(c *customContext) error {
 	c.user.CurrentTripCode = ""
 	c.user.CurrentTripRating = gira.TripRating{}
 
-	if err := c.Edit("Rating submitted, thanks!", &tele.ReplyMarkup{}); err != nil {
+	stars := strings.Repeat("⭐️", c.user.CurrentTripRating.Rating) + strings.Repeat("☆", 5-c.user.CurrentTripRating.Rating)
+	var comment string
+	if c.user.CurrentTripRating.Comment != "" {
+		comment = fmt.Sprintf("\nComment: %s", c.user.CurrentTripRating.Comment)
+	}
+
+	if err := c.Edit(
+		fmt.Sprint("Rating submitted, thanks!\n", stars, comment),
+		&tele.ReplyMarkup{},
+	); err != nil {
 		return err
 	}
 

@@ -111,6 +111,7 @@ func main() {
 	// some debug endpoints
 	authed.Handle("/test", wrapHandler(s.handleLocationTest), allowlist(111504781))
 	authed.Handle("/debug", wrapHandler(s.handleDebug), allowlist(111504781))
+	authed.Handle("/rate", wrapHandler(s.handleRate), allowlist(111504781))
 
 	authed.Handle(&btnHelp, wrapHandler(s.handleHelp))
 	authed.Handle(&btnStatus, wrapHandler(s.handleStatus))

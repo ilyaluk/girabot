@@ -235,10 +235,12 @@ func (t Trip) PrettyDuration() string {
 		endTs = time.Now()
 	}
 
-	duration := endTs.Sub(t.StartDate).Round(time.Second)
-	durStr := fmt.Sprintf("%02d:%02d", duration.Minutes(), duration.Seconds())
-	if duration.Hours() > 0 {
-		durStr = fmt.Sprintf("%d:%02d:%02d", duration.Hours(), duration.Minutes(), duration.Seconds())
+	duration := int(endTs.Sub(t.StartDate).Seconds())
+	h, m, s := duration/3600, (duration/60)%60, duration%60
+
+	durStr := fmt.Sprintf("%02d:%02d", m, s)
+	if h > 0 {
+		durStr = fmt.Sprintf("%d:%02d:%02d", h, m, s)
 	}
 	return durStr
 }
