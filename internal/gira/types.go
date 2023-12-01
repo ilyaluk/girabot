@@ -91,6 +91,10 @@ func (s Station) Location() string {
 	return strings.TrimSpace(name)
 }
 
+func (s Station) MapTitle() string {
+	return fmt.Sprintf("Station %s: %s", s.Number(), s.Location())
+}
+
 type Dock struct {
 	Code   DockCode
 	Serial DockSerial

@@ -113,9 +113,10 @@ func main() {
 	authed.Handle("/debug", wrapHandler(s.handleDebug), allowlist(111504781))
 	authed.Handle("/rate", wrapHandler(s.handleRate), allowlist(111504781))
 
-	authed.Handle(&btnHelp, wrapHandler(s.handleHelp))
-	authed.Handle(&btnStatus, wrapHandler(s.handleStatus))
 	authed.Handle(&btnFavorites, wrapHandler(s.handleShowFavorites))
+	authed.Handle(&btnStatus, wrapHandler(s.handleStatus))
+	authed.Handle(&btnHelp, wrapHandler(s.handleHelp))
+	authed.Handle(&btnFeedback, wrapHandler(s.handleFeedback))
 
 	authed.Handle("\f"+btnKeyTypeStation, wrapHandler(s.handleStation))
 	authed.Handle("\f"+btnKeyTypeBike, wrapHandler(s.handleTapBike))

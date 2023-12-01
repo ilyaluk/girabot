@@ -36,12 +36,14 @@ I'll remove it from the message history after login.
 const messageHelp = `
 How to use this bot:
 
-📍 Send me your location, and I'll show you the nearest bike stations. Tap on a station to see available bikes.
+📍 Send me a location, and I'll show you the nearest bike stations. You can send me your current location using convenient menu button, or any one via 📎 → Location.
+🅿️ Tap on a station to see available bikes.
 ⚡️ – electric bikes, ⚙️ – regular bikes, 💯 – full battery
 
 📋 Tap on a bike to open unlock menu.
 
 ℹ️ I will show you the current trip status (with some lag), and after returning the bike, I will show you the trip summary.
+🔚 While you have active trip, you can also send me locations to see the nearest stations. I will show you how many docks are available. The station information is delayed a bit, so the dock might end up being taken.
 ‼️ At the moment I can't help you to pay for the trip, so you'll have to do it in the official app.
 📈 Also, I'll ask you to rate the bike after the trip.
 
@@ -49,6 +51,11 @@ How to use this bot:
 `
 
 //💸 If required, you can pay for the trip using buttons in the chat.
+
+const messageFeedback = `
+☺️ Hope you're enjoying the bot! It's a small pet project, and I'd love to hear your feedback.
+Feel free to drop me a message at @ilyaluk.
+`
 
 const messageDonate = `
 TODO: donate message

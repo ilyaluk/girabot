@@ -117,7 +117,10 @@ func (s *server) handleText(c *customContext) error {
 		}
 		_, err := s.bot.Edit(
 			msg,
-			"Thanks for the comment! Don't forget to submit the rating.",
+			fmt.Sprintf(
+				"Thanks for the comment! Don't forget to submit the rating.\n\n%s",
+				c.user.CurrentTripRating.Comment,
+			),
 			getStarButtons(c.user.CurrentTripRating.Rating),
 		)
 		return err
@@ -138,6 +141,10 @@ func (s *server) checkLoggedIn(next tele.HandlerFunc) tele.HandlerFunc {
 
 func (s *server) handleHelp(c *customContext) error {
 	return c.Send(messageHelp, tele.ModeMarkdown, menu)
+}
+
+func (s *server) handleFeedback(c *customContext) error {
+	return c.Send(messageFeedback, tele.ModeMarkdown)
 }
 
 type UserState int
@@ -207,14 +214,15 @@ var (
 
 	btnLocation  = menu.Location("📍 Send location")
 	btnFavorites = menu.Text("⭐️ Show favorites")
-	btnHelp      = menu.Text("❓ Help")
 	btnStatus    = menu.Text("ℹ️ Status")
+	btnHelp      = menu.Text("❓ Help")
+	btnFeedback  = menu.Text("📝 Feedback")
 )
 
 func init() {
 	menu.Reply(
 		menu.Row(btnLocation, btnFavorites),
-		menu.Row(btnHelp, btnStatus),
+		menu.Row(btnStatus, btnHelp, btnFeedback),
 	)
 }
 
@@ -309,12 +317,12 @@ func (s *server) sendStationList(c *customContext, stations []gira.Station, loc 
 
 		var fav string
 		if name := c.user.Favorites[s.Serial]; name != "" {
-			fav = fmt.Sprintf("(%s) ", name)
+			fav = fmt.Sprintf("[%s] ", name)
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			"• %s*%s*:%s (%s)\n",
-			fav,
+			"• %s*%s*:%s %s\n",
+			strings.ReplaceAll(fav, "[", "\\["), // escape markdown link
 			s.Number(),
 			dist,
 			s.Location(),
@@ -433,9 +441,12 @@ func (s *server) handleStation(c *customContext) error {
 	rm.Inline(btns...)
 
 	// send station location as main message with buttons of bikes
-	return c.Send(&tele.Location{
-		Lat: float32(station.Latitude),
-		Lng: float32(station.Longitude),
+	return c.Send(&tele.Venue{
+		Location: tele.Location{
+			Lat: float32(station.Latitude),
+			Lng: float32(station.Longitude),
+		},
+		Title: station.MapTitle(),
 	}, rm)
 }
 
@@ -612,7 +623,7 @@ func (s *server) handleRate(c *customContext) error {
 
 	c.user.CurrentTripRating = gira.TripRating{}
 
-	m, err := s.bot.Send(c.Recipient(), "Please rate the bike:", getStarButtons(0))
+	m, err := s.bot.Send(c.Recipient(), "Please rate the trip", getStarButtons(0))
 	if err != nil {
 		return err
 	}
@@ -674,15 +685,15 @@ func getStarButtons(rating int) *tele.ReplyMarkup {
 
 func (s *server) handleRateAddText(c *customContext) error {
 	c.user.State = UserStateWaitingForRateComment
-	return c.Edit("Please send your comment regarding the bike")
+	return c.Edit("Please send your comment regarding the trip")
 }
 
 func (s *server) handleRateSubmit(c *customContext) error {
 	if c.user.CurrentTripCode == "" {
-		return c.Edit("No current trip code, can't submit rating")
+		return c.Edit("No last trip code, can't submit rating")
 	}
 	if c.user.CurrentTripRating.Rating == 0 {
-		return c.Edit("No rating, can't submit rating")
+		return c.Edit("Please select some stars first")
 	}
 
 	ok, err := c.gira.RateTrip(c.ctx, c.user.CurrentTripCode, c.user.CurrentTripRating)
