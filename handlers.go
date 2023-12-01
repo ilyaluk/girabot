@@ -693,15 +693,15 @@ func (s *server) handleRateSubmit(c *customContext) error {
 		return c.Edit("Can't rate trip, try again?")
 	}
 
-	c.user.CurrentTripMessageID = ""
-	c.user.CurrentTripCode = ""
-	c.user.CurrentTripRating = gira.TripRating{}
-
 	stars := strings.Repeat("⭐️", c.user.CurrentTripRating.Rating) + strings.Repeat("☆", 5-c.user.CurrentTripRating.Rating)
 	var comment string
 	if c.user.CurrentTripRating.Comment != "" {
 		comment = fmt.Sprintf("\nComment: %s", c.user.CurrentTripRating.Comment)
 	}
+
+	c.user.CurrentTripMessageID = ""
+	c.user.CurrentTripCode = ""
+	c.user.CurrentTripRating = gira.TripRating{}
 
 	if err := c.Edit(
 		fmt.Sprint("Rating submitted, thanks!\n", stars, comment),
