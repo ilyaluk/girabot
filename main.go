@@ -211,10 +211,9 @@ func (s *server) refreshTokensWatcher() {
 			}
 
 			for _, tok := range tokens {
-				iat := tok.Token.Extra(giraauth.IssuedAtKey).(time.Time)
-
+				// Access key expiry is 2 minutes, refresh key expiry is at least 7 days (?)
 				// TODO: fill correct duration
-				if time.Since(iat) < 6*24*time.Hour {
+				if time.Since(tok.Token.Expiry) < 6*24*time.Hour {
 					continue
 				}
 
