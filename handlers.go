@@ -848,11 +848,12 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.user, nil
 		},
 		"tokens": func() (any, error) {
-			var tok Token
-			if err := s.db.First(&tok, c.user.ID).Error; err != nil {
+			ts := s.getTokenSource(c.user.ID)
+			tok, err := ts.Token()
+			if err != nil {
 				return nil, err
 			}
-			return tok.Token, nil
+			return *tok, nil
 		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c.ctx)
