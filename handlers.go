@@ -914,6 +914,15 @@ func (s *server) handleDebug(c *customContext) error {
 		"doPayNoPoints": func() (any, error) {
 			return c.gira.PayTripNoPoints(c.ctx, gira.TripCode(c.Args()[1]))
 		},
+		"wsServerTime": func() (any, error) {
+			ts := s.getTokenSource(c.user.ID)
+			tok, err := ts.Token()
+			if err != nil {
+				return nil, err
+			}
+			gira.NewSubscriptionClient(tok.AccessToken)
+			return nil, nil
+		},
 	}
 
 	help := func() error {
