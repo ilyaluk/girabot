@@ -50,6 +50,22 @@ type User struct {
 	SentDonateMessage bool
 }
 
+type filteredUser User
+
+func (u filteredUser) String() string {
+	if u.LastSearchLocation != nil {
+		u.LastSearchLocation = &tele.Location{Lat: 1, Lng: 1}
+	}
+	// print only number of results
+	u.LastSearchResults = []gira.StationSerial{
+		gira.StationSerial(fmt.Sprint(len(u.LastSearchResults))),
+	}
+	u.Favorites = map[gira.StationSerial]string{
+		gira.StationSerial(fmt.Sprint(len(u.Favorites))): "",
+	}
+	return fmt.Sprintf("%+v", User(u))
+}
+
 type Token struct {
 	ID    int64         `gorm:"primarykey"`
 	Token *oauth2.Token `gorm:"serializer:json"`
@@ -183,7 +199,7 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 			}
 		}
 
-		log.Printf("bot call, command: '%s', cb: '%+v', user: %+v", c.Text(), c.Callback(), u)
+		log.Printf("bot call, action: '%s', user: %+v", getAction(c), filteredUser(u))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -206,12 +222,32 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 }
 
 func (s *server) onError(err error, c tele.Context) {
-	// TODO: log client/action/etc
-	log.Println("bot: recovered error:", err)
-	_, serr := s.bot.Send(tele.ChatID(111504781), fmt.Sprintf("recovered error: %+v", err))
-	if serr != nil {
-		log.Println("bot: error sending recovered error:", serr)
+	msg := fmt.Sprintf("recovered error from @%v (%v): %+v", c.Sender().Username, getAction(c), err)
+	log.Println("bot:", msg)
+
+	if _, err := s.bot.Send(tele.ChatID(111504781), msg); err != nil {
+		log.Println("bot: error sending recovered error:", err)
 	}
+
+	if c.Chat() != nil && c.Chat().ID != 111504781 {
+		msg := fmt.Sprintf(
+			"Internal error: %v.\nBot developer has been notified.",
+			err,
+		)
+		if err := c.Send(msg); err != nil {
+			log.Println("bot: error sending recovered error to user:", err)
+		}
+	}
+}
+
+func getAction(c tele.Context) string {
+	if c.Callback() != nil {
+		return fmt.Sprintf("cb: uniq:%s, data:%s", c.Callback().Unique, c.Callback().Data)
+	}
+	if c.Message().Location != nil {
+		return "<locatiion>"
+	}
+	return c.Text()
 }
 
 func (s *server) refreshTokensWatcher() {

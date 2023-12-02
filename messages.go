@@ -14,9 +14,9 @@ Here's what I can do:
 
 You still need the official app to register and purchase subscription, but I'm great for everyday use.
 
-This bot is not affiliated with Gira or EMEL in any way. This bot is provided as-is, without any warranty. Use at your own risk.
+🧑‍⚖️ _This bot is not affiliated with Gira or EMEL in any way. This bot is provided as-is, without any warranty. Use at your own risk._
 
-For any questions, please contact @ilyaluk.
+🖋️ For any questions, please contact @ilyaluk.
 `
 
 const messageLogin = `
