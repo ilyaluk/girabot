@@ -8,13 +8,15 @@ import (
 	"math"
 	"net/http"
 	"time"
+
+	"github.com/hasura/go-graphql-client"
 )
 
 type retryableTransport struct {
 	inner http.RoundTripper
 }
 
-const retryCount = 7
+const retryCount = 10
 
 func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("User-Agent", "girabot (https://t.me/BetterGiraBot)")
@@ -28,8 +30,8 @@ func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error
 			log.Printf("retry: error reading body: %s", err)
 			return nil, err
 		}
-		log.Println("retry: req:", req.Method, req.URL, string(reqBytes))
 	}
+	log.Println("retry: req:", req.Method, req.URL, string(reqBytes))
 
 	var resp *http.Response
 
@@ -71,32 +73,40 @@ func doRetry(resp *http.Response, respBytes []byte) bool {
 		return true
 	}
 
-	var rv struct {
-		Errs []struct {
-			Message string `json:"message"`
-			Exts    struct {
-				Codes []string `json:"codes"`
-			} `json:"extensions"`
-		} `json:"errors"`
+	// sometimes backend just returns shitty INVALID_OPERATION error, retry it
+	if isInvalidOperationError(respBytes) {
+		return true
 	}
+
+	// otherwise, don't retry
+	return false
+}
+
+func isInvalidOperationError(respBytes []byte) bool {
+	var rv struct {
+		Errors graphql.Errors
+	}
+
 	// if we can't decode response as expected error, don't retry
 	if err := json.NewDecoder(bytes.NewBuffer(respBytes)).Decode(&rv); err != nil {
 		log.Printf("retry: error decoding response: %s", err)
 		return false
 	}
 
-	log.Printf("rv: %+v", rv)
-
-	// sometimes backend just returns this shitty error, just retry it
-	if len(rv.Errs) == 1 && len(rv.Errs[0].Exts.Codes) == 1 && rv.Errs[0].Exts.Codes[0] == "INVALID_OPERATION" {
-		return true
+	if len(rv.Errors) == 1 {
+		if ext := rv.Errors[0].Extensions; ext != nil {
+			code, ok := ext["code"].(string)
+			if ok && code == "INVALID_OPERATION" {
+				return true
+			}
+		}
 	}
 
-	// otherwise, don't retry
 	return false
-
 }
 
 func backoff(retries int) time.Duration {
-	return time.Duration(math.Pow(1.5, float64(retries))) * time.Second / 2
+	// 1.3^x / 2
+	// 10 retries: ~22s
+	return time.Duration(math.Pow(1.3, float64(retries))) * time.Second / 2
 }
