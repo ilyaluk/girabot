@@ -10,15 +10,25 @@ import (
 	"time"
 
 	"github.com/hasura/go-graphql-client"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type retryableTransport struct {
 	inner http.RoundTripper
 }
 
+var (
+	requestsCnt     = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_requests_total"})
+	sentRequestsCnt = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_sent_requests_total"})
+	retriesCnt      = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_retries_total"})
+)
+
 const retryCount = 10
 
 func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	requestsCnt.Inc()
+
 	req.Header.Set("User-Agent", "girabot (https://t.me/BetterGiraBot)")
 
 	// Clone the request body
@@ -40,6 +50,7 @@ func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error
 			req.Body = io.NopCloser(bytes.NewBuffer(reqBytes))
 		}
 
+		sentRequestsCnt.Inc()
 		resp, err = t.inner.RoundTrip(req)
 		if err != nil {
 			break
@@ -60,6 +71,7 @@ func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error
 		}
 
 		if i < retryCount-1 {
+			retriesCnt.Inc()
 			time.Sleep(backoff(i))
 		}
 	}

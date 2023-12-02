@@ -16,6 +16,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	tele "gopkg.in/telebot.v3"
 	"gorm.io/gorm/clause"
 
@@ -1035,6 +1037,17 @@ func (s *server) handleDebug(c *customContext) error {
 			}
 
 			return nil, err
+		},
+		"metrics": func() (any, error) {
+			ms, _ := prometheus.DefaultGatherer.Gather()
+			ms = slices.DeleteFunc(ms, func(i *dto.MetricFamily) bool {
+				return !strings.HasPrefix(*i.Name, "gira")
+			})
+			res := map[string]any{}
+			for _, m := range ms {
+				res[*m.Name] = m.Metric[0].Counter.Value
+			}
+			return res, nil
 		},
 	}
 

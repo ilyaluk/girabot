@@ -8,6 +8,8 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 	"github.com/hasura/go-graphql-client/pkg/jsonutil"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/oauth2"
 )
 
@@ -95,12 +97,22 @@ func SubscribeActiveTrips(ctx context.Context, ts oauth2.TokenSource) (<-chan Tr
 	return ch, nil
 }
 
+var (
+	subCnt             = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_subscriptions_total"})
+	subConnectsCnt     = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_subscriptions_connects_total"})
+	subReceivedMsgsCnt = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_subscriptions_received_msgs_total"})
+	subInvalidErrsCnt  = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_subscriptions_invalid_errors_total"})
+)
+
 func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSource, cb func(T)) {
+	subCnt.Inc()
+
 	willRetry := true
 	handler := func(msg []byte, err error) error {
 		var val T
 		if err != nil {
 			if isInvalidOperationError([]byte(err.Error())) {
+				subInvalidErrsCnt.Inc()
 				// backend regularly returns this error, retry it
 				log.Println("subscription error was INVALID_OPERATION")
 				return graphql.ErrSubscriptionStopped
@@ -114,6 +126,7 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 			log.Println("subscription unmarshal error:", err, string(msg))
 			return err
 		}
+		subReceivedMsgsCnt.Inc()
 		cb(val)
 		return nil
 	}
@@ -145,6 +158,7 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 }
 
 func startOneSubscription(ctx context.Context, query any, token string, handler func([]byte, error) error) error {
+	subConnectsCnt.Inc()
 	c := graphql.NewSubscriptionClient("wss://apigira.emel.pt/graphql")
 
 	if _, err := c.Subscribe(query, map[string]any{"token": token}, handler); err != nil {
