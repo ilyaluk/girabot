@@ -61,6 +61,8 @@ func (c Client) Refresh(ctx context.Context, refreshToken string) (*oauth2.Token
 	return convertTokens(respData.Data)
 }
 
+const IssuedAtKey = "iat"
+
 func convertTokens(ts tokens) (*oauth2.Token, error) {
 	var claims jwt.RegisteredClaims
 	_, _, err := jwt.NewParser().ParseUnverified(ts.Access, &claims)
@@ -68,11 +70,15 @@ func convertTokens(ts tokens) (*oauth2.Token, error) {
 		return nil, fmt.Errorf("giraauth: parsing access token: %w", err)
 	}
 
-	return &oauth2.Token{
+	tok := &oauth2.Token{
 		AccessToken:  ts.Access,
 		RefreshToken: ts.Refresh,
 		Expiry:       claims.ExpiresAt.Time,
-	}, nil
+	}
+	tok = tok.WithExtra(map[string]any{
+		IssuedAtKey: claims.IssuedAt.Time,
+	})
+	return tok, nil
 }
 
 func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal any) error {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -131,6 +132,8 @@ func main() {
 	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler(s.handleRateAddText))
 	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler(s.handleRateSubmit))
 
+	go s.refreshTokensWatcher()
+
 	log.Println("bot start")
 	b.Start()
 }
@@ -193,6 +196,41 @@ func (s *server) onError(err error, c tele.Context) {
 	}
 }
 
+func (s *server) refreshTokensWatcher() {
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
+
+	for {
+		select {
+		case <-time.After(time.Hour + time.Duration(rand.Intn(300))*time.Second):
+			log.Println("refreshing tokens")
+			var tokens []Token
+			if err := s.db.Find(&tokens).Error; err != nil {
+				s.bot.OnError(fmt.Errorf("error getting tokens for refresh: %v", err), nil)
+				continue
+			}
+
+			for _, tok := range tokens {
+				iat := tok.Token.Extra(giraauth.IssuedAtKey).(time.Time)
+
+				// TODO: fill correct duration
+				if time.Since(iat) < 6*24*time.Hour {
+					continue
+				}
+
+				log.Println("refreshing token for", tok.ID)
+				_, err := s.getTokenSource(tok.ID).Token()
+				if err != nil {
+					s.bot.OnError(fmt.Errorf("refreshing token for %d: %v", tok.ID, err), nil)
+					continue
+				}
+			}
+		case <-done:
+			return
+		}
+	}
+}
+
 // tokenSource is an oauth2 token source that saves token to database.
 // It also refreshes token if it's invalid. It's safe for concurrent use.
 type tokenSource struct {
@@ -229,7 +267,10 @@ func (t *tokenSource) Token() (*oauth2.Token, error) {
 
 	l.Printf("token is invalid, refreshing")
 
-	newToken, err := t.auth.Refresh(context.TODO(), tok.Token.RefreshToken)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	newToken, err := t.auth.Refresh(ctx, tok.Token.RefreshToken)
 	if err != nil {
 		l.Printf("refresh error: %v", err)
 		return nil, err
