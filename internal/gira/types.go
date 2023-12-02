@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/shurcooL/graphql"
 )
 
 type (
@@ -250,124 +248,124 @@ func (t Trip) PrettyDuration() string {
 }
 
 type innerClientInfo struct {
-	Code    graphql.String
-	Name    graphql.String
-	Balance graphql.Float
-	Bonus   graphql.Int
+	Code    string
+	Name    string
+	Balance float64
+	Bonus   int32
 
 	// unused, but defined fields
-	//FiscalNumber      graphql.String
-	//PaypalReference   graphql.String
-	//Address           graphql.String
-	//PostalCode        graphql.String
-	//City              graphql.String
-	//Type              graphql.String
-	//TransactionIdBond graphql.String
-	//EasypayCustomer   graphql.String
-	//LisboaVivaSn      graphql.String
-	//NifCountry        graphql.String
-	//NumberNavegante   graphql.String
-	//Description       graphql.String
-	//CreationDate      graphql.String
-	//CreatedBy         graphql.String
-	//UpdateDate        graphql.String
-	//UpdatedBy         graphql.String
-	//DefaultOrder      graphql.Int
-	//Version           graphql.Int
+	//FiscalNumber      string
+	//PaypalReference   string
+	//Address           string
+	//PostalCode        string
+	//City              string
+	//Type              string
+	//TransactionIdBond string
+	//EasypayCustomer   string
+	//LisboaVivaSn      string
+	//NifCountry        string
+	//NumberNavegante   string
+	//Description       string
+	//CreationDate      string
+	//CreatedBy         string
+	//UpdateDate        string
+	//UpdatedBy         string
+	//DefaultOrder      int32
+	//Version           int32
 }
 
 func (i innerClientInfo) export() ClientInfo {
 	return ClientInfo{
 		Code:    UserCode(i.Code),
-		Name:    string(i.Name),
-		Balance: float64(i.Balance),
+		Name:    i.Name,
+		Balance: i.Balance,
 		Bonus:   int(i.Bonus),
 	}
 }
 
 type innerSubscriptionType struct {
-	Code        graphql.String
-	Name        graphql.String
-	Description graphql.String
+	Code        string
+	Name        string
+	Description string
 
-	//CreationDate graphql.String
-	//CreatedBy    graphql.String
-	//UpdateDate   graphql.String
-	//UpdatedBy    graphql.String
-	//DefaultOrder graphql.Int
-	//Version      graphql.Int
+	//CreationDate string
+	//CreatedBy    string
+	//UpdateDate   string
+	//UpdatedBy    string
+	//DefaultOrder int32
+	//Version      int32
 }
 
 type innerClientSubscription struct {
-	Code   graphql.String
-	User   graphql.String
-	Client graphql.String
+	Code   string
+	User   string
+	Client string
 
-	SubscriptionStatus graphql.String
-	Active             graphql.Boolean
-	ActivationDate     graphql.String
-	ExpirationDate     graphql.String
+	SubscriptionStatus string
+	Active             bool
+	ActivationDate     string
+	ExpirationDate     string
 
-	Subscription graphql.String
-	Cost         graphql.Float
+	Subscription string
+	Cost         float64
 	Type         innerSubscriptionType
 
-	//Name               graphql.String
-	//Description        graphql.String
-	//CreationDate       graphql.String
-	//CreatedBy          graphql.String
-	//UpdateDate         graphql.String
-	//UpdatedBy          graphql.String
-	//DefaultOrder       graphql.Int
-	//Version            graphql.Int
+	//Name               string
+	//Description        string
+	//CreationDate       string
+	//CreatedBy          string
+	//UpdateDate         string
+	//UpdatedBy          string
+	//DefaultOrder       int32
+	//Version            int32
 }
 
 func (i innerClientSubscription) export() ClientSubscription {
-	activationDate, _ := time.Parse(time.RFC3339, string(i.ActivationDate))
-	expirationDate, _ := time.Parse(time.RFC3339, string(i.ExpirationDate))
+	activationDate, _ := time.Parse(time.RFC3339, i.ActivationDate)
+	expirationDate, _ := time.Parse(time.RFC3339, i.ExpirationDate)
 
 	return ClientSubscription{
 		Code:   SubscriptionCode(i.Code),
 		User:   UserCode(i.User),
 		Client: UserCode(i.Client),
 
-		SubscriptionStatus: string(i.SubscriptionStatus),
-		Active:             bool(i.Active),
+		SubscriptionStatus: i.SubscriptionStatus,
+		Active:             i.Active,
 		ActivationDate:     activationDate,
 		ExpirationDate:     expirationDate,
 
-		Subscription:            string(i.Subscription),
-		Cost:                    float64(i.Cost),
-		SubscriptionCode:        string(i.Type.Code),
-		SubscriptionName:        string(i.Type.Name),
-		SubscriptionDescription: string(i.Type.Description),
+		Subscription:            i.Subscription,
+		Cost:                    i.Cost,
+		SubscriptionCode:        i.Type.Code,
+		SubscriptionName:        i.Type.Name,
+		SubscriptionDescription: i.Type.Description,
 	}
 }
 
 type innerStation struct {
-	Docks        graphql.Int
-	Bikes        graphql.Int
-	Stype        graphql.String
-	SerialNumber graphql.String
-	AssetStatus  graphql.String
-	Latitude     graphql.Float
-	Longitude    graphql.Float
-	Code         graphql.String
-	Name         graphql.String
-	Description  graphql.String
+	Docks        int32
+	Bikes        int32
+	Stype        string
+	SerialNumber string
+	AssetStatus  string
+	Latitude     float64
+	Longitude    float64
+	Code         string
+	Name         string
+	Description  string
 
-	//AssetType      graphql.String
-	//AssetCondition graphql.String
-	//Parent         graphql.String
-	//Warehouse      graphql.String
-	//Zone           graphql.String
-	//Location       graphql.String
-	//CreationDate   graphql.String
-	//CreatedBy      graphql.String
-	//UpdateDate     graphql.String
-	//UpdatedBy      graphql.String
-	//DefaultOrder   graphql.Int
-	//Version        graphql.Int
+	//AssetType      string
+	//AssetCondition string
+	//Parent         string
+	//Warehouse      string
+	//Zone           string
+	//Location       string
+	//CreationDate   string
+	//CreatedBy      string
+	//UpdateDate     string
+	//UpdatedBy      string
+	//DefaultOrder   int32
+	//Version        int32
 }
 
 func (i innerStation) export() Station {
@@ -376,12 +374,12 @@ func (i innerStation) export() Station {
 		Serial: StationSerial(i.SerialNumber),
 		Status: AssetStatus(i.AssetStatus),
 
-		Name:        string(i.Name),
-		Description: string(i.Description),
-		Type:        string(i.Stype),
+		Name:        i.Name,
+		Description: i.Description,
+		Type:        i.Stype,
 
-		Latitude:  float64(i.Latitude),
-		Longitude: float64(i.Longitude),
+		Latitude:  i.Latitude,
+		Longitude: i.Longitude,
 
 		Docks: int(i.Docks),
 		Bikes: int(i.Bikes),
@@ -389,32 +387,32 @@ func (i innerStation) export() Station {
 }
 
 type innerDock struct {
-	LedStatus    graphql.String
-	LockStatus   graphql.String
-	SerialNumber graphql.String
-	AssetStatus  graphql.String
-	Parent       graphql.String
-	Code         graphql.String
-	Name         graphql.String
+	LedStatus    string
+	LockStatus   string
+	SerialNumber string
+	AssetStatus  string
+	Parent       string
+	Code         string
+	Name         string
 
-	//AssetType      graphql.String
-	//AssetCondition graphql.String
-	//Warehouse      graphql.String
-	//Zone           graphql.String
-	//Location       graphql.String
-	//Latitude       graphql.Float
-	//Longitude      graphql.Float
-	//Description    graphql.String
-	//CreationDate   graphql.String
-	//CreatedBy      graphql.String
-	//UpdateDate     graphql.String
-	//UpdatedBy      graphql.String
-	//DefaultOrder   graphql.Int
-	//Version        graphql.Int
+	//AssetType      string
+	//AssetCondition string
+	//Warehouse      string
+	//Zone           string
+	//Location       string
+	//Latitude       float64
+	//Longitude      float64
+	//Description    string
+	//CreationDate   string
+	//CreatedBy      string
+	//UpdateDate     string
+	//UpdatedBy      string
+	//DefaultOrder   int32
+	//Version        int32
 }
 
 func (i innerDock) export() Dock {
-	num, _ := strconv.Atoi(string(i.Name))
+	num, _ := strconv.Atoi(i.Name)
 
 	return Dock{
 		Code:   DockCode(i.Code),
@@ -423,35 +421,35 @@ func (i innerDock) export() Dock {
 		Parent: StationCode(i.Parent),
 
 		Number:     num,
-		LedStatus:  string(i.LedStatus),
-		LockStatus: string(i.LockStatus),
+		LedStatus:  i.LedStatus,
+		LockStatus: i.LockStatus,
 	}
 }
 
 type innerBike struct {
-	Type         graphql.String
-	Battery      graphql.String
-	SerialNumber graphql.String
-	AssetStatus  graphql.String
-	Parent       graphql.String
-	Code         graphql.String
-	Name         graphql.String
+	Type         string
+	Battery      string
+	SerialNumber string
+	AssetStatus  string
+	Parent       string
+	Code         string
+	Name         string
 
-	//AssetType      graphql.String
-	//AssetCondition graphql.String
-	//Warehouse      graphql.String
-	//Zone           graphql.String
-	//Location       graphql.String
-	//Latitude       graphql.Float
-	//Longitude      graphql.Float
-	//Kms            graphql.String
-	//Description    graphql.String
-	//CreationDate   graphql.String
-	//CreatedBy      graphql.String
-	//UpdateDate     graphql.String
-	//UpdatedBy      graphql.String
-	//DefaultOrder   graphql.Int
-	//Version        graphql.Int
+	//AssetType      string
+	//AssetCondition string
+	//Warehouse      string
+	//Zone           string
+	//Location       string
+	//Latitude       float64
+	//Longitude      float64
+	//Kms            string
+	//Description    string
+	//CreationDate   string
+	//CreatedBy      string
+	//UpdateDate     string
+	//UpdatedBy      string
+	//DefaultOrder   int32
+	//Version        int32
 }
 
 func (i innerBike) export() Bike {
@@ -461,9 +459,9 @@ func (i innerBike) export() Bike {
 		Status: AssetStatus(i.AssetStatus),
 		Parent: DockCode(i.Parent),
 
-		Name:    string(i.Name),
+		Name:    i.Name,
 		Type:    BikeType(i.Type),
-		Battery: string(i.Battery),
+		Battery: i.Battery,
 	}
 
 	if b.Type == "" {
@@ -485,40 +483,40 @@ func (i innerBike) export() Bike {
 }
 
 type innerTrip struct {
-	User            graphql.String
-	Asset           graphql.String
-	StartDate       graphql.String
-	EndDate         graphql.String
-	StartLocation   graphql.String
-	EndLocation     graphql.String
-	Distance        graphql.Float
-	Rating          graphql.Int
-	Photo           graphql.String
-	Cost            graphql.Float
-	StartOccupation graphql.Float
-	EndOccupation   graphql.Float
-	TotalBonus      graphql.Int
-	Client          graphql.String
-	CostBonus       graphql.Int
-	Comment         graphql.String
-	EndTripDock     graphql.String
-	TripStatus      graphql.String
-	Code            graphql.String
-	Name            graphql.String
+	User            string
+	Asset           string
+	StartDate       string
+	EndDate         string
+	StartLocation   string
+	EndLocation     string
+	Distance        float64
+	Rating          int32
+	Photo           string
+	Cost            float64
+	StartOccupation float64
+	EndOccupation   float64
+	TotalBonus      int32
+	Client          string
+	CostBonus       int32
+	Comment         string
+	EndTripDock     string
+	TripStatus      string
+	Code            string
+	Name            string
 
-	//CompensationTime graphql.Boolean
-	//Description      graphql.String
-	//CreationDate     graphql.String
-	//CreatedBy        graphql.String
-	//UpdateDate       graphql.String
-	//UpdatedBy        graphql.String
-	//DefaultOrder     graphql.Int
-	//Version          graphql.Int
+	//CompensationTime bool
+	//Description      string
+	//CreationDate     string
+	//CreatedBy        string
+	//UpdateDate       string
+	//UpdatedBy        string
+	//DefaultOrder     int32
+	//Version          int32
 }
 
 func (i innerTrip) export() Trip {
-	startTime, _ := time.Parse(time.RFC3339, string(i.StartDate))
-	endTime, _ := time.Parse(time.RFC3339, string(i.EndDate))
+	startTime, _ := time.Parse(time.RFC3339, i.StartDate)
+	endTime, _ := time.Parse(time.RFC3339, i.EndDate)
 
 	return Trip{
 		User:            UserCode(i.User),
@@ -527,39 +525,39 @@ func (i innerTrip) export() Trip {
 		EndDate:         endTime,
 		StartLocation:   StationCode(i.StartLocation),
 		EndLocation:     StationCode(i.EndLocation),
-		Distance:        float64(i.Distance),
+		Distance:        i.Distance,
 		Rating:          int(i.Rating),
-		Photo:           string(i.Photo),
-		Cost:            float64(i.Cost),
-		StartOccupation: float64(i.StartOccupation),
-		EndOccupation:   float64(i.EndOccupation),
+		Photo:           i.Photo,
+		Cost:            i.Cost,
+		StartOccupation: i.StartOccupation,
+		EndOccupation:   i.EndOccupation,
 		TotalBonus:      int(i.TotalBonus),
 		Client:          UserCode(i.Client),
 		CostBonus:       int(i.CostBonus),
-		Comment:         string(i.Comment),
+		Comment:         i.Comment,
 		EndTripDock:     DockCode(i.EndTripDock),
-		TripStatus:      string(i.TripStatus),
+		TripStatus:      i.TripStatus,
 		Code:            TripCode(i.Code),
 	}
 }
 
 type innerTripDetail struct {
-	Code          graphql.String
-	StartDate     graphql.String
-	EndDate       graphql.String
-	Rating        graphql.Int
-	BikeName      graphql.String
-	StartLocation graphql.String
-	EndLocation   graphql.String
-	Bonus         graphql.Int
-	UsedPoints    graphql.Int
-	Cost          graphql.Float
-	BikeType      graphql.String
+	Code          string
+	StartDate     string
+	EndDate       string
+	Rating        int32
+	BikeName      string
+	StartLocation string
+	EndLocation   string
+	Bonus         int32
+	UsedPoints    int32
+	Cost          float64
+	BikeType      string
 }
 
 func (i innerTripDetail) export() Trip {
-	startTime, _ := time.Parse(time.RFC3339, string(i.StartDate))
-	endTime, _ := time.Parse(time.RFC3339, string(i.EndDate))
+	startTime, _ := time.Parse(time.RFC3339, i.StartDate)
+	endTime, _ := time.Parse(time.RFC3339, i.EndDate)
 
 	return Trip{
 		Code:      TripCode(i.Code),
@@ -568,12 +566,12 @@ func (i innerTripDetail) export() Trip {
 		Rating:    int(i.Rating),
 
 		// TODO: convert to asset IDs
-		BikeName:          string(i.BikeName),
-		StartLocationName: string(i.StartLocation),
-		EndLocationName:   string(i.EndLocation),
+		BikeName:          i.BikeName,
+		StartLocationName: i.StartLocation,
+		EndLocationName:   i.EndLocation,
 
 		TotalBonus: int(i.Bonus),
 		CostBonus:  int(i.UsedPoints),
-		Cost:       float64(i.Cost),
+		Cost:       i.Cost,
 	}
 }

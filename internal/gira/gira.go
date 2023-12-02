@@ -9,7 +9,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/shurcooL/graphql"
+	"github.com/hasura/go-graphql-client"
 )
 
 type Client struct {
@@ -119,7 +119,7 @@ func (c *Client) GetStationDocks(ctx context.Context, id StationSerial) (Docks, 
 	}
 
 	err := c.c.Query(ctx, &query, map[string]any{
-		"input": graphql.String(id),
+		"input": string(id),
 	})
 	if err != nil {
 		return nil, err
@@ -160,40 +160,40 @@ func (c *Client) GetStationDocks(ctx context.Context, id StationSerial) (Docks, 
 
 func (c *Client) ReserveBike(ctx context.Context, id BikeSerial) (bool, error) {
 	var mutation struct {
-		ReserveBike graphql.Boolean `graphql:"reserveBike(input: $input)"`
+		ReserveBike bool `graphql:"reserveBike(input: $input)"`
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
-		"input": graphql.String(id),
+		"input": string(id),
 	}); err != nil {
 		return false, err
 	}
 
-	return bool(mutation.ReserveBike), nil
+	return mutation.ReserveBike, nil
 }
 
 func (c *Client) CancelBikeReserve(ctx context.Context) (bool, error) {
 	var mutation struct {
-		CancelBikeReserve graphql.Boolean
+		CancelBikeReserve bool
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, nil); err != nil {
 		return false, err
 	}
 
-	return bool(mutation.CancelBikeReserve), nil
+	return mutation.CancelBikeReserve, nil
 }
 
 func (c *Client) StartTrip(ctx context.Context) (bool, error) {
 	var mutation struct {
-		StartTrip graphql.Boolean
+		StartTrip bool
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, nil); err != nil {
 		return false, err
 	}
 
-	return bool(mutation.StartTrip), nil
+	return mutation.StartTrip, nil
 }
 
 var ErrNoActiveTrip = fmt.Errorf("gira: no active trip")
@@ -219,7 +219,7 @@ func (c *Client) GetTrip(ctx context.Context, code TripCode) (Trip, error) {
 	}
 
 	if err := c.c.Query(ctx, &query, map[string]any{
-		"input": graphql.String(code),
+		"input": string(code),
 	}); err != nil {
 		return Trip{}, err
 	}
@@ -274,55 +274,55 @@ type TripRating struct {
 }
 
 func (c *Client) RateTrip(ctx context.Context, code TripCode, rating TripRating) (bool, error) {
-	//goland:noinspection
+	//goland:noinspection ALL
 	type RateTrip_In struct {
-		Code        graphql.String `graphql:"code" json:"code"`
-		Rating      graphql.Int    `graphql:"rating" json:"rating"`
-		Description graphql.String `graphql:"description" json:"description"`
+		Code        string `graphql:"code" json:"code"`
+		Rating      int    `graphql:"rating" json:"rating"`
+		Description string `graphql:"description" json:"description"`
 		//Attachment  Attachment
 	}
 
 	var mutation struct {
-		RateTrip graphql.Boolean `graphql:"rateTrip(in: $in)"`
+		RateTrip bool `graphql:"rateTrip(in: $in)"`
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"in": RateTrip_In{
-			Code:        graphql.String(code),
-			Rating:      graphql.Int(rating.Rating),
-			Description: graphql.String(rating.Comment),
+			Code:        string(code),
+			Rating:      rating.Rating,
+			Description: rating.Comment,
 		},
 	}); err != nil {
 		return false, err
 	}
 
-	return bool(mutation.RateTrip), nil
+	return mutation.RateTrip, nil
 }
 
 func (c *Client) PayTripWithPoints(ctx context.Context, id TripCode) (int, error) {
 	var mutation struct {
-		TripPay graphql.Int `graphql:"tripPayWithPoints(input: $input)"`
+		TripPay int `graphql:"tripPayWithPoints(input: $input)"`
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
-		"input": graphql.String(id),
+		"input": string(id),
 	}); err != nil {
 		return 0, err
 	}
 
-	return int(mutation.TripPay), nil
+	return mutation.TripPay, nil
 }
 
 func (c *Client) PayTripNoPoints(ctx context.Context, id TripCode) (int, error) {
 	var mutation struct {
-		TripPay graphql.Int `graphql:"tripPayWithNoPoints(input: $input)"`
+		TripPay int `graphql:"tripPayWithNoPoints(input: $input)"`
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
-		"input": graphql.String(id),
+		"input": string(id),
 	}); err != nil {
 		return 0, err
 	}
 
-	return int(mutation.TripPay), nil
+	return mutation.TripPay, nil
 }
