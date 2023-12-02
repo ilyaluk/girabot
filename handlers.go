@@ -23,7 +23,7 @@ import (
 )
 
 func (s *server) handleStart(c *customContext) error {
-	if err := c.Send(messageHello); err != nil {
+	if err := c.Send(messageHello, tele.ModeMarkdown); err != nil {
 		return err
 	}
 

@@ -3,8 +3,7 @@ package main
 const messageHello = `
 👋 Hello! I'm BetterGiraBot, an alternative client for Gira bike sharing service.
 
-I don't provide all the features of the official app, but I do some things better and more reliable.
-Here's what I can do:
+I don't provide all the features of the official app, but I do some things better and more reliable. Here's what I can do:
 - 📍 Show the nearest bike stations
 - 🚲 List available bikes at a station
 - 🔓 Unlock bikes
