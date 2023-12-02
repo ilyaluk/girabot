@@ -21,6 +21,11 @@ func SubscribeServerDate(ctx context.Context, ts oauth2.TokenSource) (<-chan tim
 	}
 
 	ch := make(chan time.Time, 16)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+
 	startSubscription(ctx, qType{}, ts, func(msg qType) {
 		log.Printf("server date: %+v", msg)
 		t, _ := time.Parse(time.RFC3339, msg.ServerDate.Date)
@@ -70,6 +75,10 @@ func SubscribeActiveTrips(ctx context.Context, ts oauth2.TokenSource) (<-chan Tr
 	}
 
 	ch := make(chan TripUpdate, 16)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
 
 	cb := func(msg qType) {
 		log.Printf("active trip detail: %+v", msg)
