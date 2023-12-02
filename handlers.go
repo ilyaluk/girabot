@@ -921,8 +921,17 @@ func (s *server) handleDebug(c *customContext) error {
 			if err != nil {
 				return nil, err
 			}
-			gira.NewSubscriptionClient(tok.AccessToken)
-			return nil, nil
+			_, err = gira.SubscribeServerDate(context.TODO(), tok.AccessToken)
+			return nil, err
+		},
+		"wsActiveTrip": func() (any, error) {
+			ts := s.getTokenSource(c.user.ID)
+			tok, err := ts.Token()
+			if err != nil {
+				return nil, err
+			}
+			_, err = gira.SubscribeActiveTrip(context.TODO(), tok.AccessToken)
+			return nil, err
 		},
 	}
 
