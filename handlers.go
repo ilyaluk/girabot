@@ -194,9 +194,10 @@ func (s *server) handleStatus(c *customContext) error {
 }
 
 const (
-	btnKeyTypeStation    = "station"
-	btnKeyTypeBike       = "bike"
-	btnKeyTypeBikeUnlock = "unlock_bike"
+	btnKeyTypeStation         = "station"
+	btnKeyTypeStationNextPage = "next_stations"
+	btnKeyTypeBike            = "bike"
+	btnKeyTypeBikeUnlock      = "unlock_bike"
 
 	btnKeyTypeCloseMenu = "close_menu"
 
@@ -257,7 +258,17 @@ func (s *server) sendNearbyStations(c *customContext, loc *tele.Location) error 
 		return cmp.Compare(distance(i, loc), distance(j, loc))
 	})
 
-	return s.sendStationList(c, ss, loc)
+	// do not store more than 50 stations
+	ss = ss[:min(len(ss), stationMaxResults)]
+
+	// store last search results to db for paging to work
+	c.user.LastSearchLocation = loc
+	c.user.LastSearchResults = make([]gira.StationSerial, len(ss))
+	for i, s := range ss {
+		c.user.LastSearchResults[i] = s.Serial
+	}
+
+	return s.sendStationList(c, ss[:min(stationPageSize, len(ss))], true, 5, loc)
 }
 
 func (s *server) sendStationLoader(c *customContext) (error, func()) {
@@ -282,20 +293,12 @@ const (
 
 // sendStationList sends a list of stations to the user.
 // If loc is not nil, it will also show the distance to the station.
-// If you provide more than 5 stations, only the first 5 will be shown with a button to show next page.
-func (s *server) sendStationList(c *customContext, stations []gira.Station, loc *tele.Location) error {
-	sb := strings.Builder{}
-
-	// do not send more than 5 stations to not overload gira api
-	stationsToSend := stations[:min(len(stations), stationPageSize)]
-	// do not store more than 50 stations
-	otherStations := stations[len(stationsToSend):min(len(stations), stationMaxResults)]
-	_ = otherStations // TODO: store other stations in DB
-
-	stationsDocks := make([]gira.Docks, len(stationsToSend))
+// Callers should not pass more than 5 stations at once.
+func (s *server) sendStationList(c *customContext, stations []gira.Station, next bool, nextOff int, loc *tele.Location) error {
+	stationsDocks := make([]gira.Docks, len(stations))
 	wg := sync.WaitGroup{}
-	wg.Add(len(stationsToSend))
-	for i, s := range stationsToSend {
+	wg.Add(len(stations))
+	for i, s := range stations {
 		go func(i int, s gira.StationSerial) {
 			defer wg.Done()
 			docks, err := c.gira.GetStationDocks(c.ctx, s)
@@ -307,9 +310,10 @@ func (s *server) sendStationList(c *customContext, stations []gira.Station, loc 
 	}
 	wg.Wait()
 
+	sb := strings.Builder{}
 	rm := &tele.ReplyMarkup{}
 
-	for i, s := range stationsToSend {
+	for i, s := range stations {
 		var dist string
 		if loc != nil {
 			dist = fmt.Sprintf(" %.0fm", distance(s, loc))
@@ -353,12 +357,19 @@ func (s *server) sendStationList(c *customContext, stations []gira.Station, loc 
 		})
 	}
 
-	rm.InlineKeyboard = append(rm.InlineKeyboard, []tele.InlineButton{
-		{
-			Unique: btnKeyTypeCloseMenu,
-			Text:   "Close",
-		},
+	var lastRow []tele.InlineButton
+	if next {
+		lastRow = append(lastRow, tele.InlineButton{
+			Unique: btnKeyTypeStationNextPage,
+			Text:   "More",
+			Data:   fmt.Sprint(nextOff),
+		})
+	}
+	lastRow = append(lastRow, tele.InlineButton{
+		Unique: btnKeyTypeCloseMenu,
+		Text:   "Close",
 	})
+	rm.InlineKeyboard = append(rm.InlineKeyboard, lastRow)
 
 	return c.Reply(sb.String(), tele.NoPreview, tele.ModeMarkdown, rm)
 }
@@ -385,6 +396,37 @@ func distance(station gira.Station, location *tele.Location) float64 {
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	return r * c
+}
+
+func (s *server) handleStationNextPage(c *customContext) error {
+	cb := c.Callback()
+	if cb == nil {
+		return c.Send("No callback")
+	}
+
+	off, _ := strconv.Atoi(cb.Data)
+
+	res := c.user.LastSearchResults
+	stationSerials := res[min(off, len(res)):min(off+stationPageSize, len(res))]
+
+	if len(stationSerials) == 0 {
+		return c.Send("No more stations (bug?)")
+	}
+
+	var ss []gira.Station
+	for _, serial := range stationSerials {
+		s, err := c.gira.GetStationCached(c.ctx, serial)
+		if err != nil {
+			return err
+		}
+		ss = append(ss, s)
+	}
+
+	return s.sendStationList(
+		c, ss,
+		off+stationPageSize < len(c.user.LastSearchResults), off+stationPageSize,
+		c.user.LastSearchLocation,
+	)
 }
 
 func (s *server) handleStation(c *customContext) error {
@@ -517,7 +559,7 @@ func (s *server) handleUnlockBike(c *customContext) error {
 }
 
 func (s *server) deleteCallbackMessage(c *customContext) error {
-	if c.Message().ReplyTo != nil {
+	if c.Message().ReplyTo != nil && !c.Message().ReplyTo.Sender.IsBot {
 		if err := s.bot.Delete(c.Message().ReplyTo); err != nil {
 			return err
 		}
@@ -737,6 +779,10 @@ func (s *server) handleAddFavorite(c *customContext) error {
 		return c.Send("No callback")
 	}
 
+	if len(c.user.Favorites) >= stationMaxResults {
+		return c.Send("Too many favorites, remove some first")
+	}
+
 	serial := gira.StationSerial(cb.Data)
 	c.user.Favorites[serial] = "⭐️"
 
@@ -837,9 +883,17 @@ func (s *server) handleShowFavorites(c *customContext) error {
 		return cmp.Compare(i.Number(), j.Number())
 	})
 
-	// TODO: paging
+	c.user.LastSearchLocation = nil
+	c.user.LastSearchResults = make([]gira.StationSerial, len(stations))
+	for i, s := range stations {
+		c.user.LastSearchResults[i] = s.Serial
+	}
 
-	return s.sendStationList(c, stations, nil)
+	return s.sendStationList(
+		c, stations[:min(stationPageSize, len(stations))],
+		len(stations) > stationPageSize, 5,
+		nil,
+	)
 }
 
 func (s *server) handleDebug(c *customContext) error {

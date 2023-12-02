@@ -42,6 +42,11 @@ type User struct {
 	CurrentTripCode      gira.TripCode
 	CurrentTripRating    gira.TripRating `gorm:"serializer:json"`
 
+	// either stations sorted by distance or favorites sorted by name
+	LastSearchResults []gira.StationSerial `gorm:"serializer:json"`
+	// if nil, will not show distances
+	LastSearchLocation *tele.Location `gorm:"serializer:json"`
+
 	SentDonateMessage bool
 }
 
@@ -129,6 +134,7 @@ func main() {
 	authed.Handle(&btnFeedback, wrapHandler(s.handleFeedback))
 
 	authed.Handle("\f"+btnKeyTypeStation, wrapHandler(s.handleStation))
+	authed.Handle("\f"+btnKeyTypeStationNextPage, wrapHandler(s.handleStationNextPage))
 	authed.Handle("\f"+btnKeyTypeBike, wrapHandler(s.handleTapBike))
 	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler(s.handleUnlockBike))
 	authed.Handle("\f"+btnKeyTypeCloseMenu, wrapHandler(s.deleteCallbackMessage))
