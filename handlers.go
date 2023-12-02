@@ -897,6 +897,12 @@ func (s *server) handleShowFavorites(c *customContext) error {
 }
 
 func (s *server) handleDebug(c *customContext) error {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("panic in debug handler:", err)
+		}
+	}()
+
 	handlers := map[string]func() (any, error){
 		"user": func() (any, error) {
 			return c.user, nil
@@ -916,9 +922,15 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.gira.GetStations(c.ctx)
 		},
 		"station": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing station serial", nil
+			}
 			return c.gira.GetStationDocks(c.ctx, gira.StationSerial(c.Args()[1]))
 		},
 		"stationByNumber": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing station number", nil
+			}
 			ss, err := c.gira.GetStations(c.ctx)
 			if err != nil {
 				return nil, err
@@ -938,6 +950,9 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.gira.GetActiveTrip(c.ctx)
 		},
 		"trip": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing trip code", nil
+			}
 			return c.gira.GetTrip(c.ctx, gira.TripCode(c.Args()[1]))
 		},
 		"tripHistory": func() (any, error) {
@@ -947,6 +962,9 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.gira.GetUnratedTrips(c.ctx)
 		},
 		"doReserve": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing bike serial", nil
+			}
 			return c.gira.ReserveBike(c.ctx, gira.BikeSerial(c.Args()[1]))
 		},
 		"doCancel": func() (any, error) {
@@ -956,6 +974,9 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.gira.StartTrip(c.ctx)
 		},
 		"doRateTrip": func() (any, error) {
+			if len(c.Args()) < 3 {
+				return "missing trip code, rating and comment", nil
+			}
 			rating, _ := strconv.Atoi(c.Args()[2])
 			req := gira.TripRating{
 				Rating:  rating,
@@ -964,12 +985,22 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.gira.RateTrip(c.ctx, gira.TripCode(c.Args()[1]), req)
 		},
 		"doPayPoints": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing trip code", nil
+			}
 			return c.gira.PayTripWithPoints(c.ctx, gira.TripCode(c.Args()[1]))
 		},
 		"doPayNoPoints": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing trip code", nil
+			}
 			return c.gira.PayTripNoPoints(c.ctx, gira.TripCode(c.Args()[1]))
 		},
 		"wsServerTime": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing duration", nil
+			}
+
 			dur, err := time.ParseDuration(c.Args()[1])
 			if err != nil {
 				return nil, err
@@ -986,6 +1017,10 @@ func (s *server) handleDebug(c *customContext) error {
 			return nil, err
 		},
 		"wsActiveTrip": func() (any, error) {
+			if len(c.Args()) == 1 {
+				return "missing duration", nil
+			}
+
 			dur, err := time.ParseDuration(c.Args()[1])
 			if err != nil {
 				return nil, err
