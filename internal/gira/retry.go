@@ -97,6 +97,14 @@ func isInvalidOperationError(respBytes []byte) bool {
 		if ext := rv.Errors[0].Extensions; ext != nil {
 			code, ok := ext["code"].(string)
 			if ok && code == "INVALID_OPERATION" {
+				//log.Println("retry: invalid operation error")
+				return true
+			}
+
+			// Jesus, sometimes it's an array
+			codes, ok := ext["codes"].([]any)
+			if ok && len(codes) > 0 && codes[0] == "INVALID_OPERATION" {
+				//log.Println("retry: invalid operation error")
 				return true
 			}
 		}
