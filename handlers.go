@@ -632,7 +632,7 @@ func (s *server) watchActiveTrip(c *customContext) error {
 }
 
 func (s *server) updateActiveTrip(c *customContext) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
 	trip, err := c.gira.GetActiveTrip(ctx)

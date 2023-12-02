@@ -114,7 +114,7 @@ func isInvalidOperationError(respBytes []byte) bool {
 }
 
 func backoff(retries int) time.Duration {
-	// 1.3^x / 2
-	// 10 retries: ~22s
-	return time.Duration(math.Pow(1.3, float64(retries))) * time.Second / 2
+	// 1.5^x / 2
+	// 10 retries: ~56s
+	return time.Duration(math.Pow(1.5, float64(retries))) * time.Second / 2
 }
