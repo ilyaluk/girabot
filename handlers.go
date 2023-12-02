@@ -722,7 +722,7 @@ func (s *server) handleRateSubmit(c *customContext) error {
 	}
 
 	if !c.user.SentDonateMessage {
-		if err := c.Send(messageDonate); err != nil {
+		if err := c.Send(messageDonate, tele.ModeMarkdown, tele.NoPreview); err != nil {
 			return err
 		}
 		c.user.SentDonateMessage = true
