@@ -590,7 +590,7 @@ func (s *server) watchActiveTrip(c *customContext) error {
 }
 
 func (s *server) updateActiveTrip(c *customContext) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	trip, err := c.gira.GetActiveTrip(ctx)
@@ -916,21 +916,11 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.gira.PayTripNoPoints(c.ctx, gira.TripCode(c.Args()[1]))
 		},
 		"wsServerTime": func() (any, error) {
-			ts := s.getTokenSource(c.user.ID)
-			tok, err := ts.Token()
-			if err != nil {
-				return nil, err
-			}
-			_, err = gira.SubscribeServerDate(context.TODO(), tok.AccessToken)
+			_, err := gira.SubscribeServerDate(context.TODO(), s.getTokenSource(c.user.ID))
 			return nil, err
 		},
 		"wsActiveTrip": func() (any, error) {
-			ts := s.getTokenSource(c.user.ID)
-			tok, err := ts.Token()
-			if err != nil {
-				return nil, err
-			}
-			_, err = gira.SubscribeActiveTrip(context.TODO(), tok.AccessToken)
+			_, err := gira.SubscribeCurrentTrip(context.TODO(), s.getTokenSource(c.user.ID))
 			return nil, err
 		},
 	}

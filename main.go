@@ -51,11 +51,17 @@ type server struct {
 	db   *gorm.DB
 	bot  *tele.Bot
 	auth *giraauth.Client
+
+	mu sync.Mutex
+	// tokenSources is a map of user ID to token source.
+	// It's used to cache token sources, also to persist one instance of token source per user due to locking.
+	tokenSouces map[int64]*tokenSource
 }
 
 func main() {
 	s := server{
-		auth: giraauth.New(http.DefaultClient),
+		auth:        giraauth.New(http.DefaultClient),
+		tokenSouces: map[int64]*tokenSource{},
 	}
 
 	// open DB
@@ -230,6 +236,23 @@ func (s *server) refreshTokensWatcher() {
 	}
 }
 
+// getTokenSource returns token source for user. It returns cached token source if it exists.
+func (s *server) getTokenSource(uid int64) *tokenSource {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if ts, ok := s.tokenSouces[uid]; ok {
+		return ts
+	}
+
+	s.tokenSouces[uid] = &tokenSource{
+		db:   s.db,
+		auth: s.auth,
+		uid:  uid,
+	}
+	return s.tokenSouces[uid]
+}
+
 // tokenSource is an oauth2 token source that saves token to database.
 // It also refreshes token if it's invalid. It's safe for concurrent use.
 type tokenSource struct {
@@ -238,14 +261,6 @@ type tokenSource struct {
 	uid  int64
 
 	mu sync.Mutex
-}
-
-func (s *server) getTokenSource(uid int64) *tokenSource {
-	return &tokenSource{
-		db:   s.db,
-		auth: s.auth,
-		uid:  uid,
-	}
 }
 
 func (t *tokenSource) Token() (*oauth2.Token, error) {
