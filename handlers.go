@@ -916,11 +916,35 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.gira.PayTripNoPoints(c.ctx, gira.TripCode(c.Args()[1]))
 		},
 		"wsServerTime": func() (any, error) {
-			_, err := gira.SubscribeServerDate(context.TODO(), s.getTokenSource(c.user.ID))
+			dur, err := time.ParseDuration(c.Args()[1])
+			if err != nil {
+				return nil, err
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), dur)
+			defer cancel()
+
+			ch, err := gira.SubscribeServerDate(ctx, s.getTokenSource(c.user.ID))
+			for t := range ch {
+				_ = c.Send(fmt.Sprintf("Server time: %s", t.Format(time.RFC3339)))
+			}
+
 			return nil, err
 		},
 		"wsActiveTrip": func() (any, error) {
-			_, err := gira.SubscribeCurrentTrip(context.TODO(), s.getTokenSource(c.user.ID))
+			dur, err := time.ParseDuration(c.Args()[1])
+			if err != nil {
+				return nil, err
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), dur)
+			defer cancel()
+
+			ch, err := gira.SubscribeActiveTrips(ctx, s.getTokenSource(c.user.ID))
+			for trip := range ch {
+				_ = c.Send(fmt.Sprintf("Current trip: `%+v`", trip), tele.ModeMarkdown)
+			}
+
 			return nil, err
 		},
 	}
