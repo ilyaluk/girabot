@@ -208,6 +208,9 @@ const (
 	btnKeyTypeRateStar    = "rate_star"
 	btnKeyTypeRateAddText = "rate_add_text"
 	btnKeyTypeRateSubmit  = "rate_submit"
+
+	btnKeyTypePayPoints = "trip_pay_points"
+	btnKeyTypePayMoney  = "trip_pay_money"
 )
 
 var (
@@ -620,7 +623,6 @@ func (s *server) watchActiveTrip(c *customContext) error {
 
 		if trip.Finished {
 			cancel()
-			// TODO: pay for trip if not free
 			if err := s.handleSendRateMsg(c); err != nil {
 				return err
 			}
@@ -637,6 +639,31 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 	}
 
 	if trip.Finished {
+		var btns tele.Row
+
+		if trip.Cost > 0 {
+			log.Printf("last trip was not free: %+v", trip)
+
+			if trip.CanUsePoints {
+				btns = append(btns, tele.Btn{
+					Unique: btnKeyTypePayPoints,
+					Text:   "💰 Pay with points",
+					Data:   string(trip.Code),
+				})
+			}
+
+			if trip.CanPayWithMoney {
+				btns = append(btns, tele.Btn{
+					Unique: btnKeyTypePayMoney,
+					Text:   "💶 Pay with money",
+					Data:   string(trip.Code),
+				})
+			}
+		}
+
+		rm := &tele.ReplyMarkup{}
+		rm.Inline(btns)
+
 		return c.Edit(fmt.Sprintf(
 			"Trip ended, thanks for using BetterGiraBot!\n"+
 				"Bike: %s\n"+
@@ -648,7 +675,7 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 			trip.Cost,
 			trip.TripPoints,
 			trip.ClientPoints,
-		))
+		), rm)
 	}
 
 	var costStr string
@@ -661,6 +688,46 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 		trip.Bike,
 		trip.PrettyDuration(),
 	)+costStr, tele.ModeMarkdown)
+}
+
+func (s *server) handlePayPoints(c *customContext) error {
+	if c.Callback() == nil {
+		return c.Send("No callback")
+	}
+
+	tc := gira.TripCode(c.Callback().Data)
+	if tc == "" {
+		return c.Send("No trip code")
+	}
+
+	paid, err := c.gira.PayTripWithPoints(c.ctx, tc)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("paid for %s with points: %d", tc, paid)
+
+	return c.Reply(fmt.Sprintf("Paid with points: %v", paid))
+}
+
+func (s *server) handlePayMoney(c *customContext) error {
+	if c.Callback() == nil {
+		return c.Send("No callback")
+	}
+
+	tc := gira.TripCode(c.Callback().Data)
+	if tc == "" {
+		return c.Send("No trip code")
+	}
+
+	paid, err := c.gira.PayTripWithMoney(c.ctx, tc)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("paid for %s with money: %d", tc, paid)
+
+	return c.Reply(fmt.Sprintf("Paid with money: %v", paid))
 }
 
 func (s *server) handleSendRateMsg(c *customContext) error {
@@ -997,11 +1064,11 @@ func (s *server) handleDebug(c *customContext) error {
 			}
 			return c.gira.PayTripWithPoints(c.ctx, gira.TripCode(c.Args()[1]))
 		},
-		"doPayNoPoints": func() (any, error) {
+		"doPayMoney": func() (any, error) {
 			if len(c.Args()) == 1 {
 				return "missing trip code", nil
 			}
-			return c.gira.PayTripNoPoints(c.ctx, gira.TripCode(c.Args()[1]))
+			return c.gira.PayTripWithMoney(c.ctx, gira.TripCode(c.Args()[1]))
 		},
 		"wsServerTime": func() (any, error) {
 			if len(c.Args()) == 1 {

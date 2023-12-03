@@ -313,7 +313,7 @@ func (c *Client) PayTripWithPoints(ctx context.Context, id TripCode) (int, error
 	return mutation.TripPay, nil
 }
 
-func (c *Client) PayTripNoPoints(ctx context.Context, id TripCode) (int, error) {
+func (c *Client) PayTripWithMoney(ctx context.Context, id TripCode) (int, error) {
 	var mutation struct {
 		TripPay int `graphql:"tripPayWithNoPoints(input: $input)"`
 	}

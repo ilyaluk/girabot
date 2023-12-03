@@ -41,17 +41,15 @@ How to use this bot:
 
 📋 Tap on a bike to open unlock menu.
 
-ℹ️ I will show you the current trip status (with some lag), and after returning the bike, I will show you the trip summary.
-🔚 While you have active trip, you can also send me locations to see the nearest stations. I will show you how many docks are available. The station information is delayed a bit, so the dock might end up being taken.
-‼️ At the moment I can't help you to pay for the trip, so you'll have to do it in the official app.
-📈 Also, I'll ask you to rate the bike after the trip.
+ℹ️ I will show you the current trip status, and after returning the bike, I will show you the trip summary.
+🔚 While you have active trip, you can also send me location, I will show you how many docks are available there. _The station information is delayed, so the dock might end up being taken._
+💸 If required, you can pay for the trip using buttons in the chat. (_not well-tested_)
+📈 Also, I'll ask you to rate the trip afterwards.
 
-⭐️ You can save your favorite stations, and I'll list them on request (and include names in listings).
+⭐️ You can name your favorite stations, I could list them, and include names in searches for convenience.
 
 🤓 If neat keyboard disappeared, run /help. To re-login run /start. 
 `
-
-//💸 If required, you can pay for the trip using buttons in the chat.
 
 const messageFeedback = `
 ☺️ Hope you're enjoying the bot! It's a small pet project, and I'd love to hear your feedback.

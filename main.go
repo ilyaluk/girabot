@@ -164,6 +164,9 @@ func main() {
 	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler(s.handleRateAddText))
 	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler(s.handleRateSubmit))
 
+	authed.Handle("\f"+btnKeyTypePayPoints, wrapHandler(s.handlePayPoints))
+	authed.Handle("\f"+btnKeyTypePayMoney, wrapHandler(s.handlePayMoney))
+
 	go s.refreshTokensWatcher()
 
 	log.Println("bot start")
