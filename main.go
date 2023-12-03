@@ -38,8 +38,9 @@ type User struct {
 	Favorites         map[gira.StationSerial]string `gorm:"serializer:json"`
 	EditingStationFav gira.StationSerial
 
-	CurrentTripMessageID    string
 	CurrentTripCode         gira.TripCode
+	CurrentTripMessageID    string
+	RateMessageID           string
 	CurrentTripRating       gira.TripRating `gorm:"serializer:json"`
 	CurrentTripRateAwaiting bool
 
@@ -49,6 +50,21 @@ type User struct {
 	LastSearchLocation *tele.Location `gorm:"serializer:json"`
 
 	SentDonateMessage bool
+}
+
+func (c customContext) getActiveTripMsg() tele.Editable {
+	return tele.StoredMessage{
+		ChatID:    c.user.ID,
+		MessageID: c.user.CurrentTripMessageID,
+	}
+}
+
+func (c customContext) getRateMsg() tele.Editable {
+	return tele.StoredMessage{
+		ChatID:    c.user.ID,
+		MessageID: c.user.RateMessageID,
+	}
+
 }
 
 // filteredUser is a User with some fields filtered out for logging.
@@ -168,6 +184,7 @@ func main() {
 	authed.Handle("\f"+btnKeyTypePayMoney, wrapHandler(s.handlePayMoney))
 
 	go s.refreshTokensWatcher()
+	s.loadActiveTrips()
 
 	log.Println("bot start")
 	b.Start()
@@ -203,25 +220,30 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 			}
 		}
 
-		log.Printf("bot call, action: '%s', user: %+v", getAction(c), filteredUser(u))
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		girac := gira.New(oauth2.NewClient(ctx, s.getTokenSource(u.ID)))
-
 		defer func() {
+			// update user in database with changes from handler
 			if err := s.db.Save(&u).Error; err != nil {
 				log.Println("error saving user:", err)
 			}
 		}()
 
-		return next(&customContext{
-			Context: c,
-			ctx:     ctx,
-			gira:    girac,
-			user:    &u,
-		})
+		log.Printf("bot call, action: '%s', user: %+v", getAction(c), filteredUser(u))
+
+		return next(s.newCustomContext(c, u))
+	}
+}
+
+func (s *server) newCustomContext(c tele.Context, u User) *customContext {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	girac := gira.New(oauth2.NewClient(ctx, s.getTokenSource(u.ID)))
+
+	return &customContext{
+		Context: c,
+		ctx:     ctx,
+		gira:    girac,
+		user:    &u,
 	}
 }
 
@@ -284,6 +306,27 @@ func (s *server) refreshTokensWatcher() {
 			}
 		case <-done:
 			return
+		}
+	}
+}
+
+func (s *server) loadActiveTrips() {
+	log.Println("loading active trips")
+	var users []User
+	if err := s.db.Find(&users).Error; err != nil {
+		log.Fatalf("error getting users for active trip load: %v", err)
+	}
+
+	for _, u := range users {
+		if u.CurrentTripCode != "" {
+			log.Printf("starting active trip watch for %d", u.ID)
+			// empty update for context, we are not using any shorthands in watchActiveTrip
+			c := s.newCustomContext(s.bot.NewContext(tele.Update{}), u)
+			go func() {
+				if err := s.watchActiveTrip(c, false); err != nil {
+					s.bot.OnError(fmt.Errorf("watching active trip: %v", err), c)
+				}
+			}()
 		}
 	}
 }

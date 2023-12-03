@@ -107,16 +107,13 @@ func (s *server) handleText(c *customContext) error {
 	case UserStateWaitingForRateComment:
 		c.user.CurrentTripRating.Comment = c.Text()
 		c.user.State = UserStateLoggedIn
-		msg := tele.StoredMessage{
-			ChatID:    c.user.ID,
-			MessageID: c.user.CurrentTripMessageID,
-		}
+
 		// delete message with rating comment
 		if err := c.Delete(); err != nil {
 			return err
 		}
 		_, err := s.bot.Edit(
-			msg,
+			c.getRateMsg(),
 			fmt.Sprintf(
 				"Thanks for the comment! Don't forget to submit the rating.\n\n%s",
 				c.user.CurrentTripRating.Comment,
@@ -551,11 +548,12 @@ func (s *server) handleUnlockBike(c *customContext) error {
 	}
 
 	go func() {
-		if err := s.watchActiveTrip(c); err != nil {
+		if err := s.watchActiveTrip(c, true); err != nil {
 			s.bot.OnError(fmt.Errorf("watching active trip: %v", err), c)
 		}
 	}()
 
+	c.user.CurrentTripMessageID = strconv.Itoa(c.Message().ID)
 	return c.Edit(
 		"Unlocked bike, waiting for trip to start.\n"+
 			"It might take some time to physically unlock the bike.",
@@ -573,7 +571,9 @@ func (s *server) deleteCallbackMessage(c *customContext) error {
 	return c.Delete()
 }
 
-func (s *server) watchActiveTrip(c *customContext) error {
+func (s *server) watchActiveTrip(c *customContext, isNewTrip bool) error {
+	// not using c.Send/Edit/etc here and in callees as it might be called upon start while reloading active trips
+
 	// probably no one should have trips longer than a day
 	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
 	defer cancel()
@@ -583,32 +583,14 @@ func (s *server) watchActiveTrip(c *customContext) error {
 		return err
 	}
 
-	// TODO: make active trips watch survive restart
 	// TODO: check for case with two bikes and fast return
-	// TODO: cancel if trip did not start after some time
+	// TODO: cancel watch if trip did not start after some time
 
-	// first channel pass -- look for new trip
-	for trip := range ch {
-		log.Printf("[uid:%d] got some current trip: %+v", c.user.ID, trip)
-
-		if trip.Finished || trip.Canceled {
-			// got update for some old trip
-			continue
-		}
-
-		log.Printf("[uid:%d] active trip started: %+v", c.user.ID, trip)
-
-		c.user.CurrentTripCode = trip.Code
-		if err := s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
+	if isNewTrip {
+		// first channel pass -- wait for new trip
+		if err := s.waitForTripStart(c, ch); err != nil {
 			return err
 		}
-
-		if err := s.updateActiveTripMessage(c, trip); err != nil {
-			return err
-		}
-
-		// found trip, updated initial message, now wait for trip to end
-		break
 	}
 
 	// second channel pass -- look for current trip updates
@@ -633,6 +615,31 @@ func (s *server) watchActiveTrip(c *customContext) error {
 		}
 	}
 
+	return nil
+}
+
+// waitForTripStart reads TripUpdates from the channel until it finds the one
+// that is not finished or canceled. It then updates the user's current trip code
+// and sends the initial message.
+func (s *server) waitForTripStart(c *customContext, ch <-chan gira.TripUpdate) error {
+	for trip := range ch {
+		log.Printf("[uid:%d] got some current trip: %+v", c.user.ID, trip)
+
+		if trip.Finished || trip.Canceled {
+			// got update for some old trip
+			continue
+		}
+
+		log.Printf("[uid:%d] active trip started: %+v", c.user.ID, trip)
+
+		c.user.CurrentTripCode = trip.Code
+		if err := s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
+			return err
+		}
+
+		// found trip, update initial message
+		return s.updateActiveTripMessage(c, trip)
+	}
 	return nil
 }
 
@@ -667,18 +674,23 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 		rm := &tele.ReplyMarkup{}
 		rm.Inline(btns)
 
-		return c.Edit(fmt.Sprintf(
-			"Trip ended, thanks for using BetterGiraBot!\n"+
-				"Bike: %s\n"+
-				"Duration: %s\n"+
-				"Cost: %.0f€\n"+
-				"Points earned: %d (total %d)",
-			trip.Bike,
-			trip.PrettyDuration(),
-			trip.Cost,
-			trip.TripPoints,
-			trip.ClientPoints,
-		), rm)
+		_, err := s.bot.Edit(
+			c.getActiveTripMsg(),
+			fmt.Sprintf(
+				"Trip ended, thanks for using BetterGiraBot!\n"+
+					"Bike: %s\n"+
+					"Duration: %s\n"+
+					"Cost: %.0f€\n"+
+					"Points earned: %d (total %d)",
+				trip.Bike,
+				trip.PrettyDuration(),
+				trip.Cost,
+				trip.TripPoints,
+				trip.ClientPoints,
+			),
+			rm,
+		)
+		return err
 	}
 
 	var costStr string
@@ -686,11 +698,14 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 		costStr = fmt.Sprintf("\nCost:  %.2f€", trip.Cost)
 	}
 
-	return c.Edit(fmt.Sprintf(
-		"Active trip:\nBike %s\nDuration ≥%s",
-		trip.Bike,
-		trip.PrettyDuration(),
-	)+costStr, tele.ModeMarkdown)
+	_, err := s.bot.Edit(
+		c.getActiveTripMsg(),
+		fmt.Sprintf(
+			"Active trip:\nBike %s\nDuration ≥%s",
+			trip.Bike,
+			trip.PrettyDuration(),
+		)+costStr, tele.ModeMarkdown)
+	return err
 }
 
 func (s *server) handlePayPoints(c *customContext) error {
@@ -734,19 +749,26 @@ func (s *server) handlePayMoney(c *customContext) error {
 }
 
 func (s *server) handleSendRateMsg(c *customContext) error {
+	// not using c.Send/Edit/etc as it might be called upon start while reloading active trips
+
 	if c.user.CurrentTripCode == "" {
-		return c.Send("No saved trip code, can't rate")
+		return fmt.Errorf("no saved trip code, can't rate")
 	}
 
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = true
 
-	m, err := s.bot.Reply(c.Message(), "Please rate the trip", getStarButtons(0))
+	u, err := s.bot.ChatByID(c.user.ID)
 	if err != nil {
 		return err
 	}
 
-	c.user.CurrentTripMessageID = strconv.Itoa(m.ID)
+	m, err := s.bot.Send(u, "Please rate the trip", getStarButtons(0))
+	if err != nil {
+		return err
+	}
+
+	c.user.RateMessageID = strconv.Itoa(m.ID)
 	return nil
 }
 
@@ -828,7 +850,7 @@ func (s *server) handleRateSubmit(c *customContext) error {
 		comment = fmt.Sprintf("\nComment: %s", c.user.CurrentTripRating.Comment)
 	}
 
-	c.user.CurrentTripMessageID = ""
+	c.user.RateMessageID = ""
 	c.user.CurrentTripCode = ""
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = false
