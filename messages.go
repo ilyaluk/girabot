@@ -59,7 +59,7 @@ Feel free to drop me a message at @ilyaluk.
 const messageDonate = `
 🥰 If you liked the bot, you can support it by donating. It will help me to keep the bot running and improve it.
 
-💳 [revolut.me/ilyaluk](https://revolut.me/ilyaluk/) (from any bank card)
+💳 revolut.me/ilyaluk (from any bank card)
 
 💌 Feel free to drop me a message at @ilyaluk if you have any questions or suggestions.
 
