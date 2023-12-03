@@ -15,7 +15,7 @@ You still need the official app to register and purchase subscription, but I'm g
 
 🧑‍⚖️ _This bot is not affiliated with Gira or EMEL in any way. This bot is provided as-is, without any warranty. Use at your own risk._
 
-🖋️ For any questions, please contact @ilyaluk.
+✍ For any questions, please contact @ilyaluk.
 `
 
 const messageLogin = `
@@ -43,7 +43,7 @@ How to use this bot:
 
 ℹ️ I will show you the current trip status, and after returning the bike, I will show you the trip summary.
 🔚 While you have active trip, you can also send me location, I will show you how many docks are available there. _The station information is delayed, so the dock might end up being taken._
-💸 If required, you can pay for the trip using buttons in the chat. (_not well-tested_)
+💸 If required, you can pay for the trip using buttons in the chat _(not well-tested)_.
 📈 Also, I'll ask you to rate the trip afterwards.
 
 ⭐️ You can name your favorite stations, I could list them, and include names in searches for convenience.
