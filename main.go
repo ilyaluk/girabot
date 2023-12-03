@@ -50,6 +50,7 @@ type User struct {
 	SentDonateMessage bool
 }
 
+// filteredUser is a User with some fields filtered out for logging.
 type filteredUser User
 
 func (u filteredUser) String() string {
@@ -138,11 +139,11 @@ func main() {
 	authed.Handle("/help", wrapHandler(s.handleHelp))
 	authed.Handle("/status", wrapHandler(s.handleStatus))
 	authed.Handle(tele.OnLocation, wrapHandler(s.handleLocation))
+	authed.Handle("/rate", wrapHandler(s.handleSendRateMsg))
 
 	// some debug endpoints
 	authed.Handle("/test", wrapHandler(s.handleLocationTest), allowlist(111504781))
 	authed.Handle("/debug", wrapHandler(s.handleDebug), allowlist(111504781))
-	authed.Handle("/rate", wrapHandler(s.handleRate), allowlist(111504781))
 
 	authed.Handle(&btnFavorites, wrapHandler(s.handleShowFavorites))
 	authed.Handle(&btnStatus, wrapHandler(s.handleStatus))

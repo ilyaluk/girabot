@@ -229,24 +229,6 @@ type Trip struct {
 	Comment string
 }
 
-// PrettyDuration returns the duration of the trip in a human-readable format.
-// If the trip is still ongoing, the current time is used as the end time.
-func (t Trip) PrettyDuration() string {
-	endTs := t.EndDate
-	if endTs.IsZero() {
-		endTs = time.Now()
-	}
-
-	duration := int(endTs.Sub(t.StartDate).Seconds())
-	h, m, s := duration/3600, (duration/60)%60, duration%60
-
-	durStr := fmt.Sprintf("%02d:%02d", m, s)
-	if h > 0 {
-		durStr = fmt.Sprintf("%d:%02d:%02d", h, m, s)
-	}
-	return durStr
-}
-
 type innerClientInfo struct {
 	Code    string
 	Name    string

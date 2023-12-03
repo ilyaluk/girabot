@@ -572,95 +572,109 @@ func (s *server) deleteCallbackMessage(c *customContext) error {
 
 // TODO: make active trips watch survive restart
 func (s *server) watchActiveTrip(c *customContext) error {
-	didStart := false
-	for i := 0; i < 12; i++ {
-		time.Sleep(5 * time.Second)
+	var currentTripCode gira.TripCode
 
-		err := s.updateActiveTrip(c)
+	for i := 0; i < 24; i++ {
+		sleepSecs := 5
+		if i < 4 {
+			// increase responsiveness if bike unlock is fast
+			sleepSecs = 2
+		}
+		time.Sleep(
+			time.Duration(sleepSecs)*time.Second +
+				time.Duration(rand.Intn(1000))*time.Millisecond,
+		)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+
+		trip, err := c.gira.GetActiveTrip(ctx)
 		if errors.Is(err, gira.ErrNoActiveTrip) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
+		log.Printf("[uid:%d] active trip started: %+v", c.user.ID, trip)
 
-		didStart = true
+		currentTripCode = trip.Code
+		_ = c.user.CurrentTripCode // just for keeping reference, as string does not suffice
+		if err := s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
+			return err
+		}
+
 		break
 	}
 
-	if !didStart {
-		return c.Edit("Trip didn't start after a minute, will not watch it anymore.")
+	if currentTripCode == "" {
+		return c.Edit("Trip didn't start after two minutes, will not watch it anymore.")
 	}
 
-	ticker := time.NewTicker(50*time.Second + time.Second*time.Duration(rand.Intn(20)))
-	defer ticker.Stop()
+	// probably no one should have trips longer than a day
+	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
+	defer cancel()
 
-	const toleratableErrors = 3
-	errs := 0
+	ch, err := gira.SubscribeActiveTrips(ctx, s.getTokenSource(c.user.ID))
+	if err != nil {
+		return err
+	}
 
-	for range ticker.C {
-		err := s.updateActiveTrip(c)
-		if errors.Is(err, gira.ErrNoActiveTrip) {
-			trip, err := c.gira.GetTrip(c.ctx, c.user.CurrentTripCode)
-			if err != nil {
-				return err
-			}
-
-			if err := c.Edit(fmt.Sprintf(
-				"Trip ended, thanks for using GiraBot!\n"+
-					"Duration: %s\n"+
-					"Cost: %.0f€",
-				trip.PrettyDuration(),
-				trip.Cost,
-			)); err != nil {
-				return err
-			}
-
-			// TODO: pay for trip if not free
-
-			return s.handleRate(c)
-		}
-		if err != nil {
-			errs++
-			if errs > toleratableErrors {
-				return err
-			}
-			s.bot.OnError(fmt.Errorf("watching trip (err %d/%d): %v", errs, toleratableErrors, err), c)
+	for trip := range ch {
+		if trip.Code != currentTripCode {
+			// got update for some old trip
 			continue
+		}
+
+		if err := s.updateActiveTripMessage(c, trip); err != nil {
+			return err
+		}
+
+		if trip.Finished {
+			cancel()
+			// TODO: pay for trip if not free
+			if err := s.handleSendRateMsg(c); err != nil {
+				return err
+			}
+			break
 		}
 	}
 
 	return nil
 }
 
-func (s *server) updateActiveTrip(c *customContext) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
-	trip, err := c.gira.GetActiveTrip(ctx)
-	if err != nil {
-		return err
-	}
-	log.Printf("[uid:%d] active trip: %+v", c.user.ID, trip)
-
-	_ = c.user.CurrentTripCode // just for keeping reference
-	if err := s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
-		return err
+func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate) error {
+	if trip.Error != 0 {
+		return fmt.Errorf("active trip watch: %d", trip.Error)
 	}
 
-	var cost string
+	if trip.Finished {
+		return c.Edit(fmt.Sprintf(
+			"Trip ended, thanks for using GiraBot!\n"+
+				"Bike: %s\n"+
+				"Duration: %s\n"+
+				"Cost: %.0f€\n"+
+				"Points earned: %d (total %d)",
+			trip.Bike,
+			trip.PrettyDuration(),
+			trip.Cost,
+			trip.TripPoints,
+			trip.ClientPoints,
+		))
+	}
+
+	var costStr string
 	if trip.Cost != 0 {
-		cost = fmt.Sprintf(", cost:  %.2f€", trip.Cost)
+		costStr = fmt.Sprintf("\nCost:  %.2f€", trip.Cost)
 	}
 
 	return c.Edit(fmt.Sprintf(
-		"Active trip: duration ≥%s%s",
+		"Active trip:\nBike %s\nDuration ≥%s",
+		trip.Bike,
 		trip.PrettyDuration(),
-		cost,
-	), tele.ModeMarkdown)
+	)+costStr, tele.ModeMarkdown)
 }
 
-func (s *server) handleRate(c *customContext) error {
+func (s *server) handleSendRateMsg(c *customContext) error {
 	if c.user.CurrentTripCode == "" {
 		return c.Send("No last trip code, can't rate")
 	}
