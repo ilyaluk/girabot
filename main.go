@@ -163,6 +163,7 @@ func main() {
 
 	b.Handle("/start", wrapHandler((*customContext).handleStart))
 	b.Handle(tele.OnText, wrapHandler((*customContext).handleText))
+	b.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
 
 	authed := b.Group()
 	authed.Use(s.checkLoggedIn)
@@ -172,9 +173,7 @@ func main() {
 	authed.Handle(tele.OnLocation, wrapHandler((*customContext).handleLocation))
 	authed.Handle("/rate", wrapHandler((*customContext).handleSendRateMsg))
 
-	// some debug endpoints
 	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(*adminID))
-	authed.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
 
 	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
 	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))

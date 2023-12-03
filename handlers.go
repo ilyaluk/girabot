@@ -1156,6 +1156,27 @@ func (c *customContext) handleDebug() error {
 			}
 			return res, nil
 		},
+		"sql": func() (any, error) {
+			args := strings.SplitN(c.Message().Text, " ", 3)
+			if len(args) < 3 {
+				return "missing query", nil
+			}
+
+			rows, err := c.s.db.Raw(args[2]).Rows()
+			if err != nil {
+				return nil, err
+			}
+
+			var res []map[string]any
+			for rows.Next() {
+				var row map[string]any
+				if err := c.s.db.ScanRows(rows, &row); err != nil {
+					return nil, err
+				}
+				res = append(res, row)
+			}
+			return res, nil
+		},
 	}
 
 	help := func() error {
