@@ -72,6 +72,9 @@ func (c *customContext) getRateMsg() tele.Editable {
 type filteredUser User
 
 func (u filteredUser) String() string {
+	if u.Email != "" {
+		u.Email = "<email>"
+	}
 	if u.LastSearchLocation != nil {
 		u.LastSearchLocation = &tele.Location{Lat: 1, Lng: 1}
 	}
