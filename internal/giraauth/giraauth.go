@@ -75,6 +75,8 @@ func convertTokens(ts tokens) (*oauth2.Token, error) {
 	}, nil
 }
 
+var ErrInvalidCredentials = fmt.Errorf("giraauth: invalid credentials")
+
 func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal any) error {
 	var reqData []byte
 	var err error
@@ -117,6 +119,10 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 
 	if err := json.NewDecoder(bytes.NewBuffer(body)).Decode(&errorVal); err != nil {
 		return fmt.Errorf("giraauth: decoding error: %w", err)
+	}
+
+	if errorVal.Error.Code == 100 && errorVal.Error.Message == "Invalid credentials." {
+		return ErrInvalidCredentials
 	}
 
 	if errorVal.Error.Code != 0 {

@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"girabot/internal/giraauth"
 	"log"
 	"math"
 	"slices"
@@ -58,6 +60,14 @@ func (c *customContext) handleText() error {
 		}
 
 		tok, err := c.s.auth.Login(c.ctx, c.user.Email, pwd)
+		if errors.Is(err, giraauth.ErrInvalidCredentials) {
+			_, err := c.s.bot.Edit(
+				m,
+				"Invalid credentials, please try different password.\n"+
+					"To change email, use /start again.",
+			)
+			return err
+		}
 		if err != nil {
 			return err
 		}
