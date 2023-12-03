@@ -4,11 +4,9 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"slices"
 	"strconv"
 	"strings"
@@ -347,7 +345,7 @@ func (s *server) sendStationList(c *customContext, stations []gira.Station, next
 			stationsDocks[i].ConventionalBikesAvailable(),
 			freeDocks,
 		)
-		if c.user.CurrentTripCode != "" {
+		if c.user.CurrentTripCode != "" && !c.user.CurrentTripRateAwaiting {
 			// if user has active trip, show only free docks to ease visibility
 			btnText = fmt.Sprintf("%s%s: %d 🆓", fav, s.Number(), freeDocks)
 		}
@@ -572,46 +570,7 @@ func (s *server) deleteCallbackMessage(c *customContext) error {
 	return c.Delete()
 }
 
-// TODO: make active trips watch survive restart
 func (s *server) watchActiveTrip(c *customContext) error {
-	var currentTripCode gira.TripCode
-
-	for i := 0; i < 24; i++ {
-		sleepSecs := 5
-		if i < 4 {
-			// increase responsiveness if bike unlock is fast
-			sleepSecs = 2
-		}
-		time.Sleep(
-			time.Duration(sleepSecs)*time.Second +
-				time.Duration(rand.Intn(1000))*time.Millisecond,
-		)
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-
-		trip, err := c.gira.GetActiveTrip(ctx)
-		if errors.Is(err, gira.ErrNoActiveTrip) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		log.Printf("[uid:%d] active trip started: %+v", c.user.ID, trip)
-
-		currentTripCode = trip.Code
-		_ = c.user.CurrentTripCode // just for keeping reference, as string does not suffice
-		if err := s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
-			return err
-		}
-
-		break
-	}
-
-	if currentTripCode == "" {
-		return c.Edit("Trip didn't start after two minutes, will not watch it anymore.")
-	}
-
 	// probably no one should have trips longer than a day
 	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
 	defer cancel()
@@ -621,8 +580,36 @@ func (s *server) watchActiveTrip(c *customContext) error {
 		return err
 	}
 
+	// TODO: make active trips watch survive restart
+	// TODO: check for case with two bikes and fast return
+	// TODO: cancel if trip did not start after some time
+
+	// first channel pass -- look for new trip
 	for trip := range ch {
-		if trip.Code != currentTripCode {
+		log.Printf("[uid:%d] got some current trip: %+v", c.user.ID, trip)
+
+		if trip.Finished || trip.Canceled {
+			// got update for some old trip
+			continue
+		}
+
+		log.Printf("[uid:%d] active trip started: %+v", c.user.ID, trip)
+
+		c.user.CurrentTripCode = trip.Code
+		if err := s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
+			return err
+		}
+
+		if err := s.updateActiveTripMessage(c, trip); err != nil {
+			return err
+		}
+	}
+
+	// second channel pass -- look for current trip updates
+	for trip := range ch {
+		log.Printf("[uid:%d] active trip update: %+v", c.user.ID, trip)
+
+		if trip.Code != c.user.CurrentTripCode {
 			// got update for some old trip
 			continue
 		}
@@ -651,7 +638,7 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 
 	if trip.Finished {
 		return c.Edit(fmt.Sprintf(
-			"Trip ended, thanks for using GiraBot!\n"+
+			"Trip ended, thanks for using BetterGiraBot!\n"+
 				"Bike: %s\n"+
 				"Duration: %s\n"+
 				"Cost: %.0f€\n"+
@@ -678,12 +665,13 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 
 func (s *server) handleSendRateMsg(c *customContext) error {
 	if c.user.CurrentTripCode == "" {
-		return c.Send("No last trip code, can't rate")
+		return c.Send("No saved trip code, can't rate")
 	}
 
 	c.user.CurrentTripRating = gira.TripRating{}
+	c.user.CurrentTripRateAwaiting = true
 
-	m, err := s.bot.Send(c.Recipient(), "Please rate the trip", getStarButtons(0))
+	m, err := s.bot.Reply(c.Message(), "Please rate the trip", getStarButtons(0))
 	if err != nil {
 		return err
 	}
@@ -773,6 +761,7 @@ func (s *server) handleRateSubmit(c *customContext) error {
 	c.user.CurrentTripMessageID = ""
 	c.user.CurrentTripCode = ""
 	c.user.CurrentTripRating = gira.TripRating{}
+	c.user.CurrentTripRateAwaiting = false
 
 	if err := c.Edit(
 		fmt.Sprint("Rating submitted, thanks!\n", stars, comment),

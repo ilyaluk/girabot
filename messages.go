@@ -35,7 +35,7 @@ I'll remove it from the message history after login.
 const messageHelp = `
 How to use this bot:
 
-📍 Send me a location, and I'll show you the nearest bike stations. You can send me your current location using convenient menu button, or any one via 📎 → Location.
+📍 Send me a location, and I'll show you the nearest bike stations. You can share your location using convenient menu button, or any point via 📎 → Location.
 🅿️ Tap on a station to see available bikes.
 ⚡️ – electric bikes, ⚙️ – regular bikes, 💯 – full battery
 
@@ -47,6 +47,8 @@ How to use this bot:
 📈 Also, I'll ask you to rate the bike after the trip.
 
 ⭐️ You can save your favorite stations, and I'll list them on request (and include names in listings).
+
+🤓 If neat keyboard disappeared, run /help. To re-login run /start. 
 `
 
 //💸 If required, you can pay for the trip using buttons in the chat.
@@ -58,7 +60,8 @@ Feel free to drop me a message at @ilyaluk.
 
 const messageDonate = `
 🥰 If you liked the bot, you can support it by donating. It will help me to keep the bot running and improve it.
-Revolut: [@ilyaluk](https://revolut.me/ilyaluk/) (from any bank card)
+
+💳 [revolut.me/ilyaluk](https://revolut.me/ilyaluk/) (from any bank card)
 
 💌 Feel free to drop me a message at @ilyaluk if you have any questions or suggestions.
 

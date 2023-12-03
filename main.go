@@ -38,9 +38,10 @@ type User struct {
 	Favorites         map[gira.StationSerial]string `gorm:"serializer:json"`
 	EditingStationFav gira.StationSerial
 
-	CurrentTripMessageID string
-	CurrentTripCode      gira.TripCode
-	CurrentTripRating    gira.TripRating `gorm:"serializer:json"`
+	CurrentTripMessageID    string
+	CurrentTripCode         gira.TripCode
+	CurrentTripRating       gira.TripRating `gorm:"serializer:json"`
+	CurrentTripRateAwaiting bool
 
 	// either stations sorted by distance or favorites sorted by name
 	LastSearchResults []gira.StationSerial `gorm:"serializer:json"`
@@ -130,7 +131,6 @@ func main() {
 	b.Use(s.addCustomContext)
 
 	b.Handle("/start", wrapHandler(s.handleStart))
-	b.Handle("/login", wrapHandler(s.handleLogin))
 	b.Handle(tele.OnText, wrapHandler(s.handleText))
 
 	authed := b.Group()
