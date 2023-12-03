@@ -230,6 +230,7 @@ func init() {
 }
 
 func (s *server) handleLocationTest(c *customContext) error {
+	// TODO: remove this from git history
 	return s.sendNearbyStations(c, &tele.Location{
 		Lat: 38.725177,
 		Lng: -9.149718,
@@ -260,7 +261,7 @@ func (s *server) sendNearbyStations(c *customContext, loc *tele.Location) error 
 		return cmp.Compare(distance(i, loc), distance(j, loc))
 	})
 
-	// do not store more than 50 stations
+	// do not store more than some reasonable amount of stations
 	ss = ss[:min(len(ss), stationMaxResults)]
 
 	// store last search results to db for paging to work
@@ -290,7 +291,8 @@ func (s *server) sendStationLoader(c *customContext) (error, func()) {
 
 const (
 	stationPageSize   = 5
-	stationMaxResults = 50
+	stationMaxResults = 20
+	stationMaxFaves   = 50
 )
 
 // sendStationList sends a list of stations to the user.
@@ -795,7 +797,7 @@ func (s *server) handleAddFavorite(c *customContext) error {
 		return c.Send("No callback")
 	}
 
-	if len(c.user.Favorites) >= stationMaxResults {
+	if len(c.user.Favorites) >= stationMaxFaves {
 		return c.Send("Too many favorites, remove some first")
 	}
 
