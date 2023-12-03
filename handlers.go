@@ -606,6 +606,9 @@ func (s *server) watchActiveTrip(c *customContext) error {
 		if err := s.updateActiveTripMessage(c, trip); err != nil {
 			return err
 		}
+
+		// found trip, updated initial message, now wait for trip to end
+		break
 	}
 
 	// second channel pass -- look for current trip updates
