@@ -229,6 +229,7 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 		}
 
 		defer func() {
+			log.Println("saving user", filteredUser(u))
 			// update user in database with changes from handler
 			if err := s.db.Save(&u).Error; err != nil {
 				log.Println("error saving user:", err)
@@ -237,13 +238,13 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 
 		log.Printf("bot call, action: '%s', user: %+v", getAction(c), filteredUser(u))
 
-		ctx, cancel := s.newCustomContext(c, u)
+		ctx, cancel := s.newCustomContext(c, &u)
 		defer cancel()
 		return next(ctx)
 	}
 }
 
-func (s *server) newCustomContext(c tele.Context, u User) (*customContext, context.CancelFunc) {
+func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
 	girac := gira.New(oauth2.NewClient(ctx, s.getTokenSource(u.ID)))
@@ -252,7 +253,7 @@ func (s *server) newCustomContext(c tele.Context, u User) (*customContext, conte
 		Context: c,
 		ctx:     ctx,
 		s:       s,
-		user:    &u,
+		user:    u,
 		gira:    girac,
 	}, cancel
 }
@@ -331,7 +332,7 @@ func (s *server) loadActiveTrips() {
 		if u.CurrentTripCode != "" {
 			log.Printf("starting active trip watch for %d", u.ID)
 			// empty update for context, we are not using any shorthands in watchActiveTrip
-			c, cancel := s.newCustomContext(s.bot.NewContext(tele.Update{}), u)
+			c, cancel := s.newCustomContext(s.bot.NewContext(tele.Update{}), &u)
 			go func() {
 				defer cancel()
 				if err := c.watchActiveTrip(false); err != nil {
