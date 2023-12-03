@@ -28,6 +28,8 @@ type User struct {
 	// ID is a telegram user ID
 	ID int64 `gorm:"primarykey"`
 
+	CreatedAt time.Time
+
 	TGName     string
 	TGUsername string
 
@@ -224,6 +226,7 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 			log.Printf("user %d not found, creating", c.Sender().ID)
 
 			u.ID = c.Sender().ID
+			u.CreatedAt = time.Now()
 			u.TGUsername = c.Sender().Username
 			u.TGName = c.Sender().FirstName + " " + c.Sender().LastName
 			u.Favorites = make(map[gira.StationSerial]string)
