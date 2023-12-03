@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"time"
 
@@ -263,16 +264,24 @@ func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, cont
 
 func (s *server) onError(err error, c tele.Context) {
 	var u User
-	s.db.First(&u, c.Sender().ID) // ignore errors, user is optional
+	username := "?"
 
-	msg := fmt.Sprintf("recovered error from @%v (%v): %+v", c.Sender().Username, getAction(c, u), err)
+	if c != nil && c.Chat() != nil {
+		s.db.First(&u, c.Chat().ID)
+		username = c.Sender().Username
+		if username == "" {
+			username = strconv.Itoa(int(c.Sender().ID))
+		}
+	}
+
+	msg := fmt.Sprintf("recovered error from @%v (%v): %+v", username, getAction(c, u), err)
 	log.Println("bot:", msg)
 
 	if _, err := s.bot.Send(tele.ChatID(*adminID), msg); err != nil {
 		log.Println("bot: error sending recovered error:", err)
 	}
 
-	if c.Chat() != nil && c.Chat().ID != *adminID {
+	if u.ID != 0 && u.ID != *adminID {
 		msg := fmt.Sprintf(
 			"Internal error: %v.\nBot developer has been notified.",
 			err,
@@ -285,6 +294,9 @@ func (s *server) onError(err error, c tele.Context) {
 
 func getAction(c tele.Context, u User) string {
 	// user might be of zero value if it's not in database
+	if c == nil {
+		return "<nil>"
+	}
 
 	if c.Callback() != nil {
 		return fmt.Sprintf("cb: uniq:%s, data:%s", c.Callback().Unique, c.Callback().Data)
@@ -348,8 +360,8 @@ func (s *server) loadActiveTrips() {
 	for _, u := range users {
 		if u.CurrentTripCode != "" {
 			log.Printf("starting active trip watch for %d", u.ID)
-			// empty update for context, we are not using any shorthands in watchActiveTrip
-			c, cancel := s.newCustomContext(s.bot.NewContext(tele.Update{}), &u)
+			// nil context, we are not using any shorthands in watchActiveTrip
+			c, cancel := s.newCustomContext(nil, &u)
 			go func() {
 				defer cancel()
 				if err := c.watchActiveTrip(false); err != nil {
