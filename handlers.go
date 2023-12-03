@@ -670,8 +670,8 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 		rm := &tele.ReplyMarkup{}
 		rm.Inline(btns)
 
-		_, err := c.s.bot.Edit(
-			c.getActiveTripMsg(),
+		if _, err := c.s.bot.Send(
+			tele.ChatID(c.user.ID),
 			fmt.Sprintf(
 				"Trip ended, thanks for using BetterGiraBot!\n"+
 					"Bike: %s\n"+
@@ -685,8 +685,16 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 				trip.ClientPoints,
 			),
 			rm,
-		)
-		return err
+		); err != nil {
+			return err
+		}
+
+		if err := c.s.bot.Delete(c.getActiveTripMsg()); err != nil {
+			return err
+		}
+		c.user.CurrentTripMessageID = ""
+
+		return nil
 	}
 
 	var costStr string
