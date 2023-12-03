@@ -27,10 +27,11 @@ func SubscribeServerDate(ctx context.Context, ts oauth2.TokenSource) (<-chan tim
 		close(ch)
 	}()
 
-	startSubscription(ctx, qType{}, ts, func(msg qType) {
+	startSubscription(ctx, qType{}, ts, func(msg qType) bool {
 		log.Printf("server date: %+v", msg)
 		t, _ := time.Parse(time.RFC3339, msg.ServerDate.Date)
 		ch <- t
+		return true
 	})
 
 	return ch, nil
@@ -99,8 +100,13 @@ func SubscribeActiveTrips(ctx context.Context, ts oauth2.TokenSource) (<-chan Tr
 		close(ch)
 	}()
 
-	cb := func(msg qType) {
+	cb := func(msg qType) bool {
 		log.Printf("active trip detail: %+v", msg)
+
+		if msg.TripDetail.Error == 401 {
+			return false
+		}
+
 		startT, _ := time.Parse(time.RFC3339, msg.TripDetail.StartDate)
 		endT, _ := time.Parse(time.RFC3339, msg.TripDetail.EndDate)
 		ch <- TripUpdate{
@@ -119,6 +125,7 @@ func SubscribeActiveTrips(ctx context.Context, ts oauth2.TokenSource) (<-chan Tr
 			PeriodTime:      msg.TripDetail.PeriodTime,
 			Error:           msg.TripDetail.Error,
 		}
+		return true
 	}
 
 	startSubscription(ctx, qType{}, ts, cb)
@@ -132,7 +139,7 @@ var (
 	subInvalidErrsCnt  = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_subscriptions_invalid_errors_total"})
 )
 
-func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSource, cb func(T)) {
+func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSource, cb func(T) bool) {
 	subCnt.Inc()
 
 	willRetry := true
@@ -155,7 +162,10 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 			return err
 		}
 		subReceivedMsgsCnt.Inc()
-		cb(val)
+		if !cb(val) {
+			log.Println("subscription callback returned false, reconnecting")
+			return graphql.ErrSubscriptionStopped
+		}
 		return nil
 	}
 
