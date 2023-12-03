@@ -236,7 +236,7 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 			}
 		}()
 
-		log.Printf("bot call, action: '%s', user: %+v", getAction(c), filteredUser(u))
+		log.Printf("bot call, action: '%s', user: %+v", getAction(c, u), filteredUser(u))
 
 		ctx, cancel := s.newCustomContext(c, &u)
 		defer cancel()
@@ -259,7 +259,10 @@ func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, cont
 }
 
 func (s *server) onError(err error, c tele.Context) {
-	msg := fmt.Sprintf("recovered error from @%v (%v): %+v", c.Sender().Username, getAction(c), err)
+	var u User
+	s.db.First(&u, c.Sender().ID) // ignore errors, user is optional
+
+	msg := fmt.Sprintf("recovered error from @%v (%v): %+v", c.Sender().Username, getAction(c, u), err)
 	log.Println("bot:", msg)
 
 	if _, err := s.bot.Send(tele.ChatID(*adminID), msg); err != nil {
@@ -277,13 +280,24 @@ func (s *server) onError(err error, c tele.Context) {
 	}
 }
 
-func getAction(c tele.Context) string {
+func getAction(c tele.Context, u User) string {
+	// user might be of zero value if it's not in database
+
 	if c.Callback() != nil {
 		return fmt.Sprintf("cb: uniq:%s, data:%s", c.Callback().Unique, c.Callback().Data)
 	}
 	if c.Message().Location != nil {
 		return "<locatiion>"
 	}
+
+	// do not send PII
+	if u.State == UserStateWaitingForEmail {
+		return "<email>"
+	}
+	if u.State == UserStateWaitingForPassword {
+		return "<password>"
+	}
+
 	return c.Text()
 }
 
