@@ -7,9 +7,9 @@ I don't provide all the features of the official app, but I do some things bette
 - 📍 Show the nearest bike stations
 - 🚲 List available bikes at a station
 - 🔓 Unlock bikes
-- ⭐️ Mark your favorite stations
 - ℹ️ Show current trip status
 - 📈 Rate your trips
+- ⭐️ Mark your favorite stations
 
 You still need the official app to register and purchase subscription, but I'm great for everyday use.
 
