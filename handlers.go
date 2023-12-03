@@ -317,7 +317,7 @@ func (c *customContext) sendStationList(stations []gira.Station, next bool, next
 	for i, s := range stations {
 		var dist string
 		if loc != nil {
-			dist = fmt.Sprintf(" %.0fm", distance(s, loc))
+			dist = fmt.Sprintf(" (_%.0fm_)", distance(s, loc))
 		}
 
 		var fav string
@@ -326,7 +326,7 @@ func (c *customContext) sendStationList(stations []gira.Station, next bool, next
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			"• %s*%s*:%s %s\n",
+			"• %s*%s*%s: %s\n",
 			strings.ReplaceAll(fav, "[", "\\["), // escape markdown link
 			s.Number(),
 			dist,
