@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -100,14 +101,21 @@ type server struct {
 	tokenSouces map[int64]*tokenSource
 }
 
+var (
+	adminID = flag.Int64("admin-id", 111504781, "admin user ID")
+	dbPath  = flag.String("db-path", "girabot.db", "path to sqlite database")
+)
+
 func main() {
+	flag.Parse()
+
 	s := server{
 		auth:        giraauth.New(http.DefaultClient),
 		tokenSouces: map[int64]*tokenSource{},
 	}
 
 	// open DB
-	db, err := gorm.Open(sqlite.Open("girabot.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(*dbPath), &gorm.Config{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -143,7 +151,6 @@ func main() {
 
 	// register middlewares and handlers
 	b.Use(middleware.Recover())
-	b.Use(allowlist(111504781, 316446182))
 	b.Use(s.addCustomContext)
 
 	b.Handle("/start", wrapHandler((*customContext).handleStart))
@@ -158,8 +165,8 @@ func main() {
 	authed.Handle("/rate", wrapHandler((*customContext).handleSendRateMsg))
 
 	// some debug endpoints
-	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(111504781))
-	authed.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(111504781))
+	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(*adminID))
+	authed.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
 
 	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
 	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))
@@ -253,11 +260,11 @@ func (s *server) onError(err error, c tele.Context) {
 	msg := fmt.Sprintf("recovered error from @%v (%v): %+v", c.Sender().Username, getAction(c), err)
 	log.Println("bot:", msg)
 
-	if _, err := s.bot.Send(tele.ChatID(111504781), msg); err != nil {
+	if _, err := s.bot.Send(tele.ChatID(*adminID), msg); err != nil {
 		log.Println("bot: error sending recovered error:", err)
 	}
 
-	if c.Chat() != nil && c.Chat().ID != 111504781 {
+	if c.Chat() != nil && c.Chat().ID != *adminID {
 		msg := fmt.Sprintf(
 			"Internal error: %v.\nBot developer has been notified.",
 			err,
