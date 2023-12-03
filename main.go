@@ -237,13 +237,14 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 
 		log.Printf("bot call, action: '%s', user: %+v", getAction(c), filteredUser(u))
 
-		return next(s.newCustomContext(c, u))
+		ctx, cancel := s.newCustomContext(c, u)
+		defer cancel()
+		return next(ctx)
 	}
 }
 
-func (s *server) newCustomContext(c tele.Context, u User) *customContext {
+func (s *server) newCustomContext(c tele.Context, u User) (*customContext, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	girac := gira.New(oauth2.NewClient(ctx, s.getTokenSource(u.ID)))
 
@@ -253,7 +254,7 @@ func (s *server) newCustomContext(c tele.Context, u User) *customContext {
 		s:       s,
 		user:    &u,
 		gira:    girac,
-	}
+	}, cancel
 }
 
 func (s *server) onError(err error, c tele.Context) {
@@ -330,8 +331,9 @@ func (s *server) loadActiveTrips() {
 		if u.CurrentTripCode != "" {
 			log.Printf("starting active trip watch for %d", u.ID)
 			// empty update for context, we are not using any shorthands in watchActiveTrip
-			c := s.newCustomContext(s.bot.NewContext(tele.Update{}), u)
+			c, cancel := s.newCustomContext(s.bot.NewContext(tele.Update{}), u)
 			go func() {
+				defer cancel()
 				if err := c.watchActiveTrip(false); err != nil {
 					s.bot.OnError(fmt.Errorf("watching active trip: %v", err), c)
 				}
