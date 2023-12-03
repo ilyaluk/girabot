@@ -617,6 +617,7 @@ func (c *customContext) watchActiveTrip(isNewTrip bool) error {
 
 		if trip.Finished {
 			cancel()
+			c.user.FinishedTrips++
 			return c.handleSendRateMsg()
 		}
 	}

@@ -46,6 +46,8 @@ type User struct {
 	CurrentTripRating       gira.TripRating `gorm:"serializer:json"`
 	CurrentTripRateAwaiting bool
 
+	FinishedTrips int
+
 	// either stations sorted by distance or favorites sorted by name
 	LastSearchResults []gira.StationSerial `gorm:"serializer:json"`
 	// if nil, will not show distances
