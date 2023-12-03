@@ -1182,6 +1182,13 @@ func (c *customContext) handleDebug() error {
 		},
 	}
 
+	rm := &tele.ReplyMarkup{
+		InlineKeyboard: [][]tele.InlineButton{{{
+			Unique: btnKeyTypeCloseMenu,
+			Text:   "Close",
+		}}},
+	}
+
 	help := func() error {
 		var lines []string
 		for k := range handlers {
@@ -1189,7 +1196,7 @@ func (c *customContext) handleDebug() error {
 		}
 		slices.Sort(lines)
 		res := "Invalid debug command. Options:\n\n" + strings.Join(lines, "")
-		return c.Send(res, tele.ModeMarkdown)
+		return c.Reply(res, tele.ModeMarkdown, rm)
 	}
 
 	if len(c.Args()) == 0 {
@@ -1217,9 +1224,10 @@ func (c *customContext) handleDebug() error {
 		if end > len(valStr) {
 			end = len(valStr)
 		}
-		if err := c.Send(
+		if err := c.Reply(
 			fmt.Sprintf("```json\n%s```", valStr[off:end]),
 			tele.ModeMarkdown,
+			rm,
 		); err != nil {
 			return err
 		}
