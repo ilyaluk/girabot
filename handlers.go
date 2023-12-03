@@ -1175,6 +1175,9 @@ func (c *customContext) handleDebug() error {
 				}
 				res = append(res, row)
 			}
+			if len(res) == 1 {
+				return res[0], nil
+			}
 			return res, nil
 		},
 	}
