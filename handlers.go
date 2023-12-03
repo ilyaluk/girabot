@@ -523,7 +523,7 @@ func (c *customContext) handleTapBike() error {
 		},
 	}
 
-	return c.Send(bikeDesc, &tele.ReplyMarkup{
+	return c.Send(bikeDesc+"\n\nTapping 'Unlock' will start the trip.", &tele.ReplyMarkup{
 		InlineKeyboard: [][]tele.InlineButton{btnsRow},
 	})
 }
