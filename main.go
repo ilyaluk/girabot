@@ -52,14 +52,14 @@ type User struct {
 	SentDonateMessage bool
 }
 
-func (c customContext) getActiveTripMsg() tele.Editable {
+func (c *customContext) getActiveTripMsg() tele.Editable {
 	return tele.StoredMessage{
 		ChatID:    c.user.ID,
 		MessageID: c.user.CurrentTripMessageID,
 	}
 }
 
-func (c customContext) getRateMsg() tele.Editable {
+func (c *customContext) getRateMsg() tele.Editable {
 	return tele.StoredMessage{
 		ChatID:    c.user.ID,
 		MessageID: c.user.RateMessageID,
@@ -146,42 +146,42 @@ func main() {
 	b.Use(allowlist(111504781, 316446182))
 	b.Use(s.addCustomContext)
 
-	b.Handle("/start", wrapHandler(s.handleStart))
-	b.Handle(tele.OnText, wrapHandler(s.handleText))
+	b.Handle("/start", wrapHandler((*customContext).handleStart))
+	b.Handle(tele.OnText, wrapHandler((*customContext).handleText))
 
 	authed := b.Group()
 	authed.Use(s.checkLoggedIn)
 
-	authed.Handle("/help", wrapHandler(s.handleHelp))
-	authed.Handle("/status", wrapHandler(s.handleStatus))
-	authed.Handle(tele.OnLocation, wrapHandler(s.handleLocation))
-	authed.Handle("/rate", wrapHandler(s.handleSendRateMsg))
+	authed.Handle("/help", wrapHandler((*customContext).handleHelp))
+	authed.Handle("/status", wrapHandler((*customContext).handleStatus))
+	authed.Handle(tele.OnLocation, wrapHandler((*customContext).handleLocation))
+	authed.Handle("/rate", wrapHandler((*customContext).handleSendRateMsg))
 
 	// some debug endpoints
-	authed.Handle("/test", wrapHandler(s.handleLocationTest), allowlist(111504781))
-	authed.Handle("/debug", wrapHandler(s.handleDebug), allowlist(111504781))
+	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(111504781))
+	authed.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(111504781))
 
-	authed.Handle(&btnFavorites, wrapHandler(s.handleShowFavorites))
-	authed.Handle(&btnStatus, wrapHandler(s.handleStatus))
-	authed.Handle(&btnHelp, wrapHandler(s.handleHelp))
-	authed.Handle(&btnFeedback, wrapHandler(s.handleFeedback))
+	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
+	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))
+	authed.Handle(&btnHelp, wrapHandler((*customContext).handleHelp))
+	authed.Handle(&btnFeedback, wrapHandler((*customContext).handleFeedback))
 
-	authed.Handle("\f"+btnKeyTypeStation, wrapHandler(s.handleStation))
-	authed.Handle("\f"+btnKeyTypeStationNextPage, wrapHandler(s.handleStationNextPage))
-	authed.Handle("\f"+btnKeyTypeBike, wrapHandler(s.handleTapBike))
-	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler(s.handleUnlockBike))
-	authed.Handle("\f"+btnKeyTypeCloseMenu, wrapHandler(s.deleteCallbackMessage))
+	authed.Handle("\f"+btnKeyTypeStation, wrapHandler((*customContext).handleStation))
+	authed.Handle("\f"+btnKeyTypeStationNextPage, wrapHandler((*customContext).handleStationNextPage))
+	authed.Handle("\f"+btnKeyTypeBike, wrapHandler((*customContext).handleTapBike))
+	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler((*customContext).handleUnlockBike))
+	authed.Handle("\f"+btnKeyTypeCloseMenu, wrapHandler((*customContext).deleteCallbackMessage))
 
-	authed.Handle("\f"+btnKeyTypeAddFav, wrapHandler(s.handleAddFavorite))
-	authed.Handle("\f"+btnKeyTypeRemoveFav, wrapHandler(s.handleRemoveFavorite))
-	authed.Handle("\f"+btnKeyTypeRenameFav, wrapHandler(s.handleRenameFavorite))
+	authed.Handle("\f"+btnKeyTypeAddFav, wrapHandler((*customContext).handleAddFavorite))
+	authed.Handle("\f"+btnKeyTypeRemoveFav, wrapHandler((*customContext).handleRemoveFavorite))
+	authed.Handle("\f"+btnKeyTypeRenameFav, wrapHandler((*customContext).handleRenameFavorite))
 
-	authed.Handle("\f"+btnKeyTypeRateStar, wrapHandler(s.handleRateStar))
-	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler(s.handleRateAddText))
-	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler(s.handleRateSubmit))
+	authed.Handle("\f"+btnKeyTypeRateStar, wrapHandler((*customContext).handleRateStar))
+	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler((*customContext).handleRateAddText))
+	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler((*customContext).handleRateSubmit))
 
-	authed.Handle("\f"+btnKeyTypePayPoints, wrapHandler(s.handlePayPoints))
-	authed.Handle("\f"+btnKeyTypePayMoney, wrapHandler(s.handlePayMoney))
+	authed.Handle("\f"+btnKeyTypePayPoints, wrapHandler((*customContext).handlePayPoints))
+	authed.Handle("\f"+btnKeyTypePayMoney, wrapHandler((*customContext).handlePayMoney))
 
 	go s.refreshTokensWatcher()
 	s.loadActiveTrips()
@@ -195,6 +195,7 @@ type customContext struct {
 
 	ctx context.Context
 
+	s    *server
 	user *User
 	gira *gira.Client
 }
@@ -242,8 +243,9 @@ func (s *server) newCustomContext(c tele.Context, u User) *customContext {
 	return &customContext{
 		Context: c,
 		ctx:     ctx,
-		gira:    girac,
+		s:       s,
 		user:    &u,
+		gira:    girac,
 	}
 }
 
@@ -323,7 +325,7 @@ func (s *server) loadActiveTrips() {
 			// empty update for context, we are not using any shorthands in watchActiveTrip
 			c := s.newCustomContext(s.bot.NewContext(tele.Update{}), u)
 			go func() {
-				if err := s.watchActiveTrip(c, false); err != nil {
+				if err := c.watchActiveTrip(false); err != nil {
 					s.bot.OnError(fmt.Errorf("watching active trip: %v", err), c)
 				}
 			}()
@@ -332,7 +334,7 @@ func (s *server) loadActiveTrips() {
 }
 
 // getTokenSource returns token source for user. It returns cached token source if it exists.
-func (s *server) getTokenSource(uid int64) *tokenSource {
+func (s *server) getTokenSource(uid int64) oauth2.TokenSource {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -346,6 +348,10 @@ func (s *server) getTokenSource(uid int64) *tokenSource {
 		uid:  uid,
 	}
 	return s.tokenSouces[uid]
+}
+
+func (c *customContext) getTokenSource() oauth2.TokenSource {
+	return c.s.getTokenSource(c.user.ID)
 }
 
 // tokenSource is an oauth2 token source that saves token to database.

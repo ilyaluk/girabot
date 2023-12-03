@@ -22,15 +22,15 @@ import (
 	"girabot/internal/gira"
 )
 
-func (s *server) handleStart(c *customContext) error {
+func (c *customContext) handleStart() error {
 	if err := c.Send(messageHello, tele.ModeMarkdown); err != nil {
 		return err
 	}
 
-	return s.handleLogin(c)
+	return c.handleLogin()
 }
 
-func (s *server) handleLogin(c *customContext) error {
+func (c *customContext) handleLogin() error {
 	if err := c.Send(messageLogin); err != nil {
 		return err
 	}
@@ -39,7 +39,7 @@ func (s *server) handleLogin(c *customContext) error {
 	return nil
 }
 
-func (s *server) handleText(c *customContext) error {
+func (c *customContext) handleText() error {
 	switch c.user.State {
 	case UserStateWaitingForEmail:
 		c.user.Email = c.Text()
@@ -52,17 +52,17 @@ func (s *server) handleText(c *customContext) error {
 		return nil
 	case UserStateWaitingForPassword:
 		pwd := c.Text()
-		m, err := s.bot.Send(c.Recipient(), "Logging in...")
+		m, err := c.s.bot.Send(c.Recipient(), "Logging in...")
 		if err != nil {
 			return err
 		}
 
-		tok, err := s.auth.Login(c.ctx, c.user.Email, pwd)
+		tok, err := c.s.auth.Login(c.ctx, c.user.Email, pwd)
 		if err != nil {
 			return err
 		}
 
-		if err := s.bot.Delete(tele.StoredMessage{
+		if err := c.s.bot.Delete(tele.StoredMessage{
 			ChatID:    c.user.ID,
 			MessageID: strconv.Itoa(c.user.EmailMessageID),
 		}); err != nil {
@@ -80,19 +80,19 @@ func (s *server) handleText(c *customContext) error {
 			ID:    c.user.ID,
 			Token: tok,
 		}
-		if err := s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&dbToken).Error; err != nil {
+		if err := c.s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&dbToken).Error; err != nil {
 			return err
 		}
 
-		if err := s.handleStatus(c); err != nil {
+		if err := c.handleStatus(); err != nil {
 			return err
 		}
 
-		if err := s.bot.Delete(m); err != nil {
+		if err := c.s.bot.Delete(m); err != nil {
 			return err
 		}
 
-		return s.handleHelp(c)
+		return c.handleHelp()
 	case UserStateLoggedIn:
 		return c.Send("Unknown command, try /help")
 	case UserStateWaitingForFavName:
@@ -112,7 +112,7 @@ func (s *server) handleText(c *customContext) error {
 		if err := c.Delete(); err != nil {
 			return err
 		}
-		_, err := s.bot.Edit(
+		_, err := c.s.bot.Edit(
 			c.getRateMsg(),
 			fmt.Sprintf(
 				"Thanks for the comment! Don't forget to submit the rating.\n\n%s",
@@ -136,11 +136,11 @@ func (s *server) checkLoggedIn(next tele.HandlerFunc) tele.HandlerFunc {
 	}
 }
 
-func (s *server) handleHelp(c *customContext) error {
+func (c *customContext) handleHelp() error {
 	return c.Send(messageHelp, tele.ModeMarkdown, menu)
 }
 
-func (s *server) handleFeedback(c *customContext) error {
+func (c *customContext) handleFeedback() error {
 	return c.Send(messageFeedback, tele.ModeMarkdown)
 }
 
@@ -155,7 +155,7 @@ const (
 	UserStateWaitingForRateComment
 )
 
-func (s *server) handleStatus(c *customContext) error {
+func (c *customContext) handleStatus() error {
 	if err := c.Notify(tele.Typing); err != nil {
 		return err
 	}
@@ -227,20 +227,19 @@ func init() {
 	)
 }
 
-func (s *server) handleLocationTest(c *customContext) error {
-	// TODO: remove this from git history
-	return s.sendNearbyStations(c, &tele.Location{
+func (c *customContext) handleLocationTest() error {
+	return c.sendNearbyStations(&tele.Location{
 		Lat: 38.725177,
 		Lng: -9.149718,
 	})
 }
 
-func (s *server) handleLocation(c *customContext) error {
-	return s.sendNearbyStations(c, c.Message().Location)
+func (c *customContext) handleLocation() error {
+	return c.sendNearbyStations(c.Message().Location)
 }
 
-func (s *server) sendNearbyStations(c *customContext, loc *tele.Location) error {
-	err, cleanup := s.sendStationLoader(c)
+func (c *customContext) sendNearbyStations(loc *tele.Location) error {
+	err, cleanup := c.sendStationLoader()
 	if err != nil {
 		return err
 	}
@@ -269,11 +268,11 @@ func (s *server) sendNearbyStations(c *customContext, loc *tele.Location) error 
 		c.user.LastSearchResults[i] = s.Serial
 	}
 
-	return s.sendStationList(c, ss[:min(stationPageSize, len(ss))], true, 5, loc)
+	return c.sendStationList(ss[:min(stationPageSize, len(ss))], true, 5, loc)
 }
 
-func (s *server) sendStationLoader(c *customContext) (error, func()) {
-	m, err := s.bot.Send(c.Recipient(), "Loading stations...")
+func (c *customContext) sendStationLoader() (error, func()) {
+	m, err := c.s.bot.Send(c.Recipient(), "Loading stations...")
 	if err != nil {
 		return err, nil
 	}
@@ -281,7 +280,7 @@ func (s *server) sendStationLoader(c *customContext) (error, func()) {
 		return err, nil
 	}
 	return nil, func() {
-		if err := s.bot.Delete(m); err != nil {
+		if err := c.s.bot.Delete(m); err != nil {
 			log.Println("error deleting message:", err)
 		}
 	}
@@ -296,7 +295,7 @@ const (
 // sendStationList sends a list of stations to the user.
 // If loc is not nil, it will also show the distance to the station.
 // Callers should not pass more than 5 stations at once.
-func (s *server) sendStationList(c *customContext, stations []gira.Station, next bool, nextOff int, loc *tele.Location) error {
+func (c *customContext) sendStationList(stations []gira.Station, next bool, nextOff int, loc *tele.Location) error {
 	stationsDocks := make([]gira.Docks, len(stations))
 	wg := sync.WaitGroup{}
 	wg.Add(len(stations))
@@ -400,7 +399,7 @@ func distance(station gira.Station, location *tele.Location) float64 {
 	return r * c
 }
 
-func (s *server) handleStationNextPage(c *customContext) error {
+func (c *customContext) handleStationNextPage() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
@@ -424,14 +423,14 @@ func (s *server) handleStationNextPage(c *customContext) error {
 		ss = append(ss, s)
 	}
 
-	return s.sendStationList(
-		c, ss,
+	return c.sendStationList(
+		ss,
 		off+stationPageSize < len(c.user.LastSearchResults), off+stationPageSize,
 		c.user.LastSearchLocation,
 	)
 }
 
-func (s *server) handleStation(c *customContext) error {
+func (c *customContext) handleStation() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
@@ -477,7 +476,7 @@ func (s *server) handleStation(c *customContext) error {
 	rm := &tele.ReplyMarkup{}
 
 	btns := rm.Split(2, dockBtns)
-	btns = append([]tele.Row{getStationFavButtons(c, station.Serial)}, btns...)
+	btns = append([]tele.Row{c.getStationFavButtons(station.Serial)}, btns...)
 	btns = append(btns, tele.Row{{
 		Text:   "Close",
 		Unique: btnKeyTypeCloseMenu,
@@ -494,7 +493,7 @@ func (s *server) handleStation(c *customContext) error {
 	}, rm)
 }
 
-func (s *server) handleTapBike(c *customContext) error {
+func (c *customContext) handleTapBike() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
@@ -519,7 +518,7 @@ func (s *server) handleTapBike(c *customContext) error {
 	})
 }
 
-func (s *server) handleUnlockBike(c *customContext) error {
+func (c *customContext) handleUnlockBike() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
@@ -548,8 +547,8 @@ func (s *server) handleUnlockBike(c *customContext) error {
 	}
 
 	go func() {
-		if err := s.watchActiveTrip(c, true); err != nil {
-			s.bot.OnError(fmt.Errorf("watching active trip: %v", err), c)
+		if err := c.watchActiveTrip(true); err != nil {
+			c.s.bot.OnError(fmt.Errorf("watching active trip: %v", err), c)
 		}
 	}()
 
@@ -561,9 +560,9 @@ func (s *server) handleUnlockBike(c *customContext) error {
 	)
 }
 
-func (s *server) deleteCallbackMessage(c *customContext) error {
+func (c *customContext) deleteCallbackMessage() error {
 	if c.Message().ReplyTo != nil && !c.Message().ReplyTo.Sender.IsBot {
-		if err := s.bot.Delete(c.Message().ReplyTo); err != nil {
+		if err := c.s.bot.Delete(c.Message().ReplyTo); err != nil {
 			return err
 		}
 	}
@@ -571,14 +570,14 @@ func (s *server) deleteCallbackMessage(c *customContext) error {
 	return c.Delete()
 }
 
-func (s *server) watchActiveTrip(c *customContext, isNewTrip bool) error {
+func (c *customContext) watchActiveTrip(isNewTrip bool) error {
 	// not using c.Send/Edit/etc here and in callees as it might be called upon start while reloading active trips
 
 	// probably no one should have trips longer than a day
 	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
 	defer cancel()
 
-	ch, err := gira.SubscribeActiveTrips(ctx, s.getTokenSource(c.user.ID))
+	ch, err := gira.SubscribeActiveTrips(ctx, c.getTokenSource())
 	if err != nil {
 		return err
 	}
@@ -588,7 +587,7 @@ func (s *server) watchActiveTrip(c *customContext, isNewTrip bool) error {
 
 	if isNewTrip {
 		// first channel pass -- wait for new trip
-		if err := s.waitForTripStart(c, ch); err != nil {
+		if err := c.waitForTripStart(ch); err != nil {
 			return err
 		}
 	}
@@ -602,16 +601,13 @@ func (s *server) watchActiveTrip(c *customContext, isNewTrip bool) error {
 			continue
 		}
 
-		if err := s.updateActiveTripMessage(c, trip); err != nil {
+		if err := c.updateActiveTripMessage(trip); err != nil {
 			return err
 		}
 
 		if trip.Finished {
 			cancel()
-			if err := s.handleSendRateMsg(c); err != nil {
-				return err
-			}
-			break
+			return c.handleSendRateMsg()
 		}
 	}
 
@@ -621,7 +617,7 @@ func (s *server) watchActiveTrip(c *customContext, isNewTrip bool) error {
 // waitForTripStart reads TripUpdates from the channel until it finds the one
 // that is not finished or canceled. It then updates the user's current trip code
 // and sends the initial message.
-func (s *server) waitForTripStart(c *customContext, ch <-chan gira.TripUpdate) error {
+func (c *customContext) waitForTripStart(ch <-chan gira.TripUpdate) error {
 	for trip := range ch {
 		log.Printf("[uid:%d] got some current trip: %+v", c.user.ID, trip)
 
@@ -633,17 +629,17 @@ func (s *server) waitForTripStart(c *customContext, ch <-chan gira.TripUpdate) e
 		log.Printf("[uid:%d] active trip started: %+v", c.user.ID, trip)
 
 		c.user.CurrentTripCode = trip.Code
-		if err := s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
+		if err := c.s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
 			return err
 		}
 
 		// found trip, update initial message
-		return s.updateActiveTripMessage(c, trip)
+		return c.updateActiveTripMessage(trip)
 	}
 	return nil
 }
 
-func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate) error {
+func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 	if trip.Error != 0 {
 		return fmt.Errorf("active trip watch: %d", trip.Error)
 	}
@@ -674,7 +670,7 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 		rm := &tele.ReplyMarkup{}
 		rm.Inline(btns)
 
-		_, err := s.bot.Edit(
+		_, err := c.s.bot.Edit(
 			c.getActiveTripMsg(),
 			fmt.Sprintf(
 				"Trip ended, thanks for using BetterGiraBot!\n"+
@@ -698,7 +694,7 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 		costStr = fmt.Sprintf("\nCost:  %.2f€", trip.Cost)
 	}
 
-	_, err := s.bot.Edit(
+	_, err := c.s.bot.Edit(
 		c.getActiveTripMsg(),
 		fmt.Sprintf(
 			"Active trip:\nBike %s\nDuration ≥%s",
@@ -708,7 +704,7 @@ func (s *server) updateActiveTripMessage(c *customContext, trip gira.TripUpdate)
 	return err
 }
 
-func (s *server) handlePayPoints(c *customContext) error {
+func (c *customContext) handlePayPoints() error {
 	if c.Callback() == nil {
 		return c.Send("No callback")
 	}
@@ -728,7 +724,7 @@ func (s *server) handlePayPoints(c *customContext) error {
 	return c.Reply(fmt.Sprintf("Paid with points: %v", paid))
 }
 
-func (s *server) handlePayMoney(c *customContext) error {
+func (c *customContext) handlePayMoney() error {
 	if c.Callback() == nil {
 		return c.Send("No callback")
 	}
@@ -748,7 +744,7 @@ func (s *server) handlePayMoney(c *customContext) error {
 	return c.Reply(fmt.Sprintf("Paid with money: %v", paid))
 }
 
-func (s *server) handleSendRateMsg(c *customContext) error {
+func (c *customContext) handleSendRateMsg() error {
 	// not using c.Send/Edit/etc as it might be called upon start while reloading active trips
 
 	if c.user.CurrentTripCode == "" {
@@ -758,12 +754,12 @@ func (s *server) handleSendRateMsg(c *customContext) error {
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = true
 
-	u, err := s.bot.ChatByID(c.user.ID)
+	u, err := c.s.bot.ChatByID(c.user.ID)
 	if err != nil {
 		return err
 	}
 
-	m, err := s.bot.Send(u, "Please rate the trip", getStarButtons(0))
+	m, err := c.s.bot.Send(u, "Please rate the trip", getStarButtons(0))
 	if err != nil {
 		return err
 	}
@@ -772,7 +768,7 @@ func (s *server) handleSendRateMsg(c *customContext) error {
 	return nil
 }
 
-func (s *server) handleRateStar(c *customContext) error {
+func (c *customContext) handleRateStar() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
@@ -823,12 +819,12 @@ func getStarButtons(rating int) *tele.ReplyMarkup {
 	return rm
 }
 
-func (s *server) handleRateAddText(c *customContext) error {
+func (c *customContext) handleRateAddText() error {
 	c.user.State = UserStateWaitingForRateComment
 	return c.Edit("Please send your comment regarding the trip")
 }
 
-func (s *server) handleRateSubmit(c *customContext) error {
+func (c *customContext) handleRateSubmit() error {
 	if c.user.CurrentTripCode == "" {
 		return c.Edit("No last trip code, can't submit rating")
 	}
@@ -872,7 +868,7 @@ func (s *server) handleRateSubmit(c *customContext) error {
 	return nil
 }
 
-func (s *server) handleAddFavorite(c *customContext) error {
+func (c *customContext) handleAddFavorite() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
@@ -885,14 +881,14 @@ func (s *server) handleAddFavorite(c *customContext) error {
 	serial := gira.StationSerial(cb.Data)
 	c.user.Favorites[serial] = "⭐️"
 
-	if err := updateStationMsgFavoriteButtons(c, serial); err != nil {
+	if err := c.updateStationMsgFavoriteButtons(serial); err != nil {
 		return err
 	}
 
 	return c.Respond(&tele.CallbackResponse{Text: "Added to favorites"})
 }
 
-func (s *server) handleRemoveFavorite(c *customContext) error {
+func (c *customContext) handleRemoveFavorite() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
@@ -901,16 +897,16 @@ func (s *server) handleRemoveFavorite(c *customContext) error {
 	serial := gira.StationSerial(cb.Data)
 	delete(c.user.Favorites, serial)
 
-	if err := updateStationMsgFavoriteButtons(c, serial); err != nil {
+	if err := c.updateStationMsgFavoriteButtons(serial); err != nil {
 		return err
 	}
 
 	return c.Respond(&tele.CallbackResponse{Text: "Removed favorite"})
 }
 
-func updateStationMsgFavoriteButtons(c *customContext, serial gira.StationSerial) error {
+func (c *customContext) updateStationMsgFavoriteButtons(serial gira.StationSerial) error {
 	var favBtns []tele.InlineButton
-	for _, btn := range getStationFavButtons(c, serial) {
+	for _, btn := range c.getStationFavButtons(serial) {
 		favBtns = append(favBtns, *btn.Inline())
 	}
 
@@ -919,7 +915,7 @@ func updateStationMsgFavoriteButtons(c *customContext, serial gira.StationSerial
 	return c.Edit(&rm)
 }
 
-func getStationFavButtons(c *customContext, serial gira.StationSerial) tele.Row {
+func (c *customContext) getStationFavButtons(serial gira.StationSerial) tele.Row {
 	favRow := tele.Row{
 		tele.Btn{
 			Unique: btnKeyTypeAddFav,
@@ -944,7 +940,7 @@ func getStationFavButtons(c *customContext, serial gira.StationSerial) tele.Row 
 	return favRow
 }
 
-func (s *server) handleRenameFavorite(c *customContext) error {
+func (c *customContext) handleRenameFavorite() error {
 	if err := c.Send("Please send new name for this station (1-2 emojis tops)"); err != nil {
 		return err
 	}
@@ -953,12 +949,12 @@ func (s *server) handleRenameFavorite(c *customContext) error {
 	return nil
 }
 
-func (s *server) handleShowFavorites(c *customContext) error {
+func (c *customContext) handleShowFavorites() error {
 	if len(c.user.Favorites) == 0 {
 		return c.Send("No favorites yet, add some from station view")
 	}
 
-	err, cleanup := s.sendStationLoader(c)
+	err, cleanup := c.sendStationLoader()
 	if err != nil {
 		return err
 	}
@@ -988,14 +984,14 @@ func (s *server) handleShowFavorites(c *customContext) error {
 		c.user.LastSearchResults[i] = s.Serial
 	}
 
-	return s.sendStationList(
-		c, stations[:min(stationPageSize, len(stations))],
+	return c.sendStationList(
+		stations[:min(stationPageSize, len(stations))],
 		len(stations) > stationPageSize, 5,
 		nil,
 	)
 }
 
-func (s *server) handleDebug(c *customContext) error {
+func (c *customContext) handleDebug() error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Println("panic in debug handler:", err)
@@ -1007,7 +1003,7 @@ func (s *server) handleDebug(c *customContext) error {
 			return c.user, nil
 		},
 		"tokens": func() (any, error) {
-			ts := s.getTokenSource(c.user.ID)
+			ts := c.getTokenSource()
 			tok, err := ts.Token()
 			if err != nil {
 				return nil, err
@@ -1108,7 +1104,7 @@ func (s *server) handleDebug(c *customContext) error {
 			ctx, cancel := context.WithTimeout(context.Background(), dur)
 			defer cancel()
 
-			ch, err := gira.SubscribeServerDate(ctx, s.getTokenSource(c.user.ID))
+			ch, err := gira.SubscribeServerDate(ctx, c.getTokenSource())
 			for t := range ch {
 				_ = c.Send(fmt.Sprintf("Server time: %s", t.Format(time.RFC3339)))
 			}
@@ -1128,7 +1124,7 @@ func (s *server) handleDebug(c *customContext) error {
 			ctx, cancel := context.WithTimeout(context.Background(), dur)
 			defer cancel()
 
-			ch, err := gira.SubscribeActiveTrips(ctx, s.getTokenSource(c.user.ID))
+			ch, err := gira.SubscribeActiveTrips(ctx, c.getTokenSource())
 			for trip := range ch {
 				_ = c.Send(fmt.Sprintf("Current trip: `%+v`", trip), tele.ModeMarkdown)
 			}
