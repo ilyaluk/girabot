@@ -87,14 +87,14 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 	if reqVal != nil {
 		reqData, err = json.Marshal(reqVal)
 		if err != nil {
-			return err
+			return fmt.Errorf("giraauth: marshaling request: %w", err)
 		}
 	}
 
 	path := fmt.Sprintf("https://api-auth.emel.pt%s", api)
 	req, err := http.NewRequestWithContext(ctx, method, path, bytes.NewBuffer(reqData))
 	if err != nil {
-		return err
+		return fmt.Errorf("giraauth: creating request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -102,7 +102,7 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("giraauth: performing request: %w", err)
 	}
 
 	body, err := io.ReadAll(resp.Body)
