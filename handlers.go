@@ -623,8 +623,14 @@ func (c *customContext) watchActiveTrip(isNewTrip bool) error {
 		}
 
 		if trip.Finished {
+			log.Printf("[uid:%d] active trip finished: %+v", c.user.ID, trip)
 			cancel()
+
 			c.user.FinishedTrips++
+			if err := c.s.db.Model(c.user).Update("FinishedTrips", c.user.FinishedTrips).Error; err != nil {
+				return err
+			}
+
 			return c.handleSendRateMsg()
 		}
 	}
@@ -776,6 +782,7 @@ func (c *customContext) handlePayMoney() error {
 
 func (c *customContext) handleSendRateMsg() error {
 	// not using c.Send/Edit/etc as it might be called upon start while reloading active trips
+	log.Printf("[uid:%d] sending rate message", c.user.ID)
 
 	if c.user.CurrentTripCode == "" {
 		return fmt.Errorf("no saved trip code, can't rate")
