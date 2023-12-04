@@ -2,7 +2,9 @@ package gira
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"math"
@@ -24,7 +26,10 @@ var (
 	retriesCnt      = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_retries_total"})
 )
 
-const retryCount = 10
+const (
+	requestTimeout = 5 * time.Second
+	retryCount     = 10
+)
 
 func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	requestsCnt.Inc()
@@ -50,8 +55,17 @@ func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error
 			req.Body = io.NopCloser(bytes.NewBuffer(reqBytes))
 		}
 
+		// limit the request time, then retry if it times out
+		ctx, cancel := context.WithTimeout(req.Context(), requestTimeout)
+		defer cancel()
+		req := req.WithContext(ctx)
+
 		sentRequestsCnt.Inc()
 		resp, err = t.inner.RoundTrip(req)
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Printf("retry: num %d, request timed out(%v): %s", i, requestTimeout, err)
+			continue
+		}
 		if err != nil {
 			break
 		}
