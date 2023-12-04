@@ -166,9 +166,11 @@ const (
 )
 
 func (c *customContext) handleStatus() error {
-	if err := c.Notify(tele.Typing); err != nil {
+	err, cleanup := c.sendTyping()
+	if err != nil {
 		return err
 	}
+	defer cleanup()
 
 	info, err := c.gira.GetClientInfo(c.ctx)
 	if err != nil {
@@ -289,13 +291,38 @@ func (c *customContext) sendStationLoader() (error, func()) {
 	if err != nil {
 		return err, nil
 	}
+	err, cleanup := c.sendTyping()
+	if err != nil {
+		return err, nil
+	}
+	return nil, func() {
+		cleanup()
+		if err := c.Bot().Delete(m); err != nil {
+			log.Println("error deleting message:", err)
+		}
+	}
+}
+
+func (c *customContext) sendTyping() (error, func()) {
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-time.After(4 * time.Second):
+				if err := c.Notify(tele.Typing); err != nil {
+					log.Println("error notifying typing:", err)
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
 	if err := c.Notify(tele.Typing); err != nil {
 		return err, nil
 	}
 	return nil, func() {
-		if err := c.Bot().Delete(m); err != nil {
-			log.Println("error deleting message:", err)
-		}
+		close(done)
 	}
 }
 
@@ -418,6 +445,12 @@ func (c *customContext) handleStationNextPage() error {
 		return c.Send("No callback")
 	}
 
+	err, cleanup := c.sendStationLoader()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	off, _ := strconv.Atoi(cb.Data)
 
 	res := c.user.LastSearchResults
@@ -448,6 +481,12 @@ func (c *customContext) handleStation() error {
 	if cb == nil {
 		return c.Send("No callback")
 	}
+
+	err, cleanup := c.sendTyping()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	serial := gira.StationSerial(cb.Data)
 	station, err := c.gira.GetStationCached(c.ctx, serial)
@@ -536,6 +575,12 @@ func (c *customContext) handleUnlockBike() error {
 	if cb == nil {
 		return c.Send("No callback")
 	}
+
+	err, cleanup := c.sendTyping()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	if err := c.Edit("Unlocking bike..."); err != nil {
 		return err
@@ -869,6 +914,12 @@ func (c *customContext) handleRateSubmit() error {
 	if c.user.CurrentTripRating.Rating == 0 {
 		return c.Edit("Please select some stars first", getStarButtons(0))
 	}
+
+	err, cleanup := c.sendTyping()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	ok, err := c.gira.RateTrip(c.ctx, c.user.CurrentTripCode, c.user.CurrentTripRating)
 	if err != nil {
