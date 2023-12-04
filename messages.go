@@ -48,7 +48,7 @@ How to use this bot:
 
 ⭐️ You can name your favorite stations, I could list them, and include names in searches for convenience.
 
-🤓 If neat keyboard disappeared, run /help. To re-login run /start. 
+🤓 If neat keyboard disappeared, run /help. To re-login run /login. 
 `
 
 const messageFeedback = `

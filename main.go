@@ -162,6 +162,7 @@ func main() {
 	b.Use(s.addCustomContext)
 
 	b.Handle("/start", wrapHandler((*customContext).handleStart))
+	b.Handle("/login", wrapHandler((*customContext).handleLogin))
 	b.Handle(tele.OnText, wrapHandler((*customContext).handleText))
 
 	b.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
@@ -75,7 +76,10 @@ func convertTokens(ts tokens) (*oauth2.Token, error) {
 	}, nil
 }
 
-var ErrInvalidCredentials = fmt.Errorf("giraauth: invalid credentials")
+var (
+	ErrInvalidCredentials  = fmt.Errorf("giraauth: invalid credentials")
+	ErrInvalidRefreshToken = fmt.Errorf("giraauth: invalid refresh token, try /login again")
+)
 
 func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal any) error {
 	var reqData []byte
@@ -104,6 +108,10 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("giraauth: reading body: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "Invalid refresh token") {
+		return ErrInvalidRefreshToken
 	}
 
 	if resp.StatusCode != http.StatusOK {

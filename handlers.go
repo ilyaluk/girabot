@@ -64,7 +64,7 @@ func (c *customContext) handleText() error {
 			_, err := c.Bot().Edit(
 				m,
 				"Invalid credentials, please try different password.\n"+
-					"To change email, use /start again.",
+					"To change email, use /login.",
 			)
 			return err
 		}
@@ -140,7 +140,7 @@ func (s *server) checkLoggedIn(next tele.HandlerFunc) tele.HandlerFunc {
 	return func(c tele.Context) error {
 		cc := c.(*customContext)
 		if cc.user.State < UserStateLoggedIn {
-			return c.Send("Not logged in, use /start")
+			return c.Send("Not logged in, use /login")
 		}
 		return next(c)
 	}
