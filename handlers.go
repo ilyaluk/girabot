@@ -791,7 +791,7 @@ func (c *customContext) handleSendRateMsg() error {
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = true
 
-	m, err := c.Bot().Send(tele.ChatID(c.user.ID), "Please rate the trip", getStarButtons(0))
+	m, err := c.Bot().Send(tele.ChatID(c.user.ID), "Please rate the trip\nDon't forget to submit", getStarButtons(0))
 	if err != nil {
 		return err
 	}
