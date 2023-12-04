@@ -54,14 +54,14 @@ func (c *customContext) handleText() error {
 		return nil
 	case UserStateWaitingForPassword:
 		pwd := c.Text()
-		m, err := c.s.bot.Send(c.Recipient(), "Logging in...")
+		m, err := c.Bot().Send(c.Recipient(), "Logging in...")
 		if err != nil {
 			return err
 		}
 
 		tok, err := c.s.auth.Login(c.ctx, c.user.Email, pwd)
 		if errors.Is(err, giraauth.ErrInvalidCredentials) {
-			_, err := c.s.bot.Edit(
+			_, err := c.Bot().Edit(
 				m,
 				"Invalid credentials, please try different password.\n"+
 					"To change email, use /start again.",
@@ -72,7 +72,7 @@ func (c *customContext) handleText() error {
 			return err
 		}
 
-		if err := c.s.bot.Delete(tele.StoredMessage{
+		if err := c.Bot().Delete(tele.StoredMessage{
 			ChatID:    c.user.ID,
 			MessageID: strconv.Itoa(c.user.EmailMessageID),
 		}); err != nil {
@@ -98,7 +98,7 @@ func (c *customContext) handleText() error {
 			return err
 		}
 
-		if err := c.s.bot.Delete(m); err != nil {
+		if err := c.Bot().Delete(m); err != nil {
 			return err
 		}
 
@@ -122,7 +122,7 @@ func (c *customContext) handleText() error {
 		if err := c.Delete(); err != nil {
 			return err
 		}
-		_, err := c.s.bot.Edit(
+		_, err := c.Bot().Edit(
 			c.getRateMsg(),
 			fmt.Sprintf(
 				"Thanks for the comment! Don't forget to submit the rating.\n\n%s",
@@ -284,7 +284,7 @@ func (c *customContext) sendNearbyStations(loc *tele.Location) error {
 }
 
 func (c *customContext) sendStationLoader() (error, func()) {
-	m, err := c.s.bot.Send(c.Recipient(), "Loading stations...")
+	m, err := c.Bot().Send(c.Recipient(), "Loading stations...")
 	if err != nil {
 		return err, nil
 	}
@@ -292,7 +292,7 @@ func (c *customContext) sendStationLoader() (error, func()) {
 		return err, nil
 	}
 	return nil, func() {
-		if err := c.s.bot.Delete(m); err != nil {
+		if err := c.Bot().Delete(m); err != nil {
 			log.Println("error deleting message:", err)
 		}
 	}
@@ -560,7 +560,7 @@ func (c *customContext) handleUnlockBike() error {
 
 	go func() {
 		if err := c.watchActiveTrip(true); err != nil {
-			c.s.bot.OnError(fmt.Errorf("watching active trip: %v", err), c)
+			c.Bot().OnError(fmt.Errorf("watching active trip: %v", err), c)
 		}
 	}()
 
@@ -574,7 +574,7 @@ func (c *customContext) handleUnlockBike() error {
 
 func (c *customContext) deleteCallbackMessage() error {
 	if c.Message().ReplyTo != nil && !c.Message().ReplyTo.Sender.IsBot {
-		if err := c.s.bot.Delete(c.Message().ReplyTo); err != nil {
+		if err := c.Bot().Delete(c.Message().ReplyTo); err != nil {
 			return err
 		}
 	}
@@ -683,7 +683,7 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 		rm := &tele.ReplyMarkup{}
 		rm.Inline(btns)
 
-		if _, err := c.s.bot.Send(
+		if _, err := c.Bot().Send(
 			tele.ChatID(c.user.ID),
 			fmt.Sprintf(
 				"Trip ended, thanks for using BetterGiraBot!\n"+
@@ -702,7 +702,7 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 			return err
 		}
 
-		if err := c.s.bot.Delete(c.getActiveTripMsg()); err != nil {
+		if err := c.Bot().Delete(c.getActiveTripMsg()); err != nil {
 			return err
 		}
 		c.user.CurrentTripMessageID = ""
@@ -715,7 +715,7 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 		costStr = fmt.Sprintf("\nCost:  %.2f€", trip.Cost)
 	}
 
-	_, err := c.s.bot.Edit(
+	_, err := c.Bot().Edit(
 		c.getActiveTripMsg(),
 		fmt.Sprintf(
 			"Active trip:\nBike %s\nDuration ≥%s",
@@ -775,7 +775,7 @@ func (c *customContext) handleSendRateMsg() error {
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = true
 
-	m, err := c.s.bot.Send(tele.ChatID(c.user.ID), "Please rate the trip", getStarButtons(0))
+	m, err := c.Bot().Send(tele.ChatID(c.user.ID), "Please rate the trip", getStarButtons(0))
 	if err != nil {
 		return err
 	}
