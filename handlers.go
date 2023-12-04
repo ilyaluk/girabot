@@ -727,6 +727,10 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 			trip.Bike,
 			trip.PrettyDuration(),
 		)+costStr, tele.ModeMarkdown)
+	if errors.Is(err, tele.ErrSameMessageContent) {
+		// if we got two updates at the same time, we might get this error from TG
+		return nil
+	}
 	return err
 }
 
