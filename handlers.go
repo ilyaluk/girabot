@@ -218,6 +218,8 @@ const (
 
 	btnKeyTypePayPoints = "trip_pay_points"
 	btnKeyTypePayMoney  = "trip_pay_money"
+
+	btnKeyTypeRetryDebug = "retry_debug"
 )
 
 var (
@@ -1006,11 +1008,30 @@ func (c *customContext) handleShowFavorites() error {
 }
 
 func (c *customContext) handleDebug() error {
+	_, args, ok := strings.Cut(c.Text(), " ")
+	if !ok {
+		return c.Send("Missing debug command")
+	}
+
+	return c.runDebug(args)
+}
+
+func (c *customContext) handleDebugRetry() error {
+	if c.Callback() == nil {
+		return c.Send("No callback")
+	}
+
+	return c.runDebug(c.Callback().Data)
+}
+
+func (c *customContext) runDebug(text string) error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Println("panic in debug handler:", err)
 		}
 	}()
+
+	args := strings.Split(text, " ")
 
 	handlers := map[string]func() (any, error){
 		"user": func() (any, error) {
@@ -1031,13 +1052,13 @@ func (c *customContext) handleDebug() error {
 			return c.gira.GetStations(c.ctx)
 		},
 		"station": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing station serial", nil
 			}
-			return c.gira.GetStationDocks(c.ctx, gira.StationSerial(c.Args()[1]))
+			return c.gira.GetStationDocks(c.ctx, gira.StationSerial(args[1]))
 		},
 		"stationByNumber": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing station number", nil
 			}
 			ss, err := c.gira.GetStations(c.ctx)
@@ -1045,7 +1066,7 @@ func (c *customContext) handleDebug() error {
 				return nil, err
 			}
 			for _, s := range ss {
-				if s.Number() == c.Args()[1] {
+				if s.Number() == args[1] {
 					docks, err := c.gira.GetStationDocks(c.ctx, s.Serial)
 					return map[string]any{
 						"station": s,
@@ -1053,16 +1074,16 @@ func (c *customContext) handleDebug() error {
 					}, err
 				}
 			}
-			return c.gira.GetStationDocks(c.ctx, gira.StationSerial(c.Args()[1]))
+			return c.gira.GetStationDocks(c.ctx, gira.StationSerial(args[1]))
 		},
 		"activeTrip": func() (any, error) {
 			return c.gira.GetActiveTrip(c.ctx)
 		},
 		"trip": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing trip code", nil
 			}
-			return c.gira.GetTrip(c.ctx, gira.TripCode(c.Args()[1]))
+			return c.gira.GetTrip(c.ctx, gira.TripCode(args[1]))
 		},
 		"tripHistory": func() (any, error) {
 			return c.gira.GetTripHistory(c.ctx)
@@ -1071,10 +1092,10 @@ func (c *customContext) handleDebug() error {
 			return c.gira.GetUnratedTrips(c.ctx)
 		},
 		"doReserve": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing bike serial", nil
 			}
-			return c.gira.ReserveBike(c.ctx, gira.BikeSerial(c.Args()[1]))
+			return c.gira.ReserveBike(c.ctx, gira.BikeSerial(args[1]))
 		},
 		"doCancel": func() (any, error) {
 			return c.gira.CancelBikeReserve(c.ctx)
@@ -1083,34 +1104,35 @@ func (c *customContext) handleDebug() error {
 			return c.gira.StartTrip(c.ctx)
 		},
 		"doRateTrip": func() (any, error) {
-			if len(c.Args()) < 3 {
+			args := strings.SplitN(text, " ", 3)
+			if len(args) < 3 {
 				return "missing trip code, rating and comment", nil
 			}
-			rating, _ := strconv.Atoi(c.Args()[2])
+			rating, _ := strconv.Atoi(args[2])
 			req := gira.TripRating{
 				Rating:  rating,
-				Comment: c.Args()[3],
+				Comment: args[3],
 			}
-			return c.gira.RateTrip(c.ctx, gira.TripCode(c.Args()[1]), req)
+			return c.gira.RateTrip(c.ctx, gira.TripCode(args[1]), req)
 		},
 		"doPayPoints": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing trip code", nil
 			}
-			return c.gira.PayTripWithPoints(c.ctx, gira.TripCode(c.Args()[1]))
+			return c.gira.PayTripWithPoints(c.ctx, gira.TripCode(args[1]))
 		},
 		"doPayMoney": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing trip code", nil
 			}
-			return c.gira.PayTripWithMoney(c.ctx, gira.TripCode(c.Args()[1]))
+			return c.gira.PayTripWithMoney(c.ctx, gira.TripCode(args[1]))
 		},
 		"wsServerTime": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing duration", nil
 			}
 
-			dur, err := time.ParseDuration(c.Args()[1])
+			dur, err := time.ParseDuration(args[1])
 			if err != nil {
 				return nil, err
 			}
@@ -1126,11 +1148,11 @@ func (c *customContext) handleDebug() error {
 			return nil, err
 		},
 		"wsActiveTrip": func() (any, error) {
-			if len(c.Args()) == 1 {
+			if len(args) == 1 {
 				return "missing duration", nil
 			}
 
-			dur, err := time.ParseDuration(c.Args()[1])
+			dur, err := time.ParseDuration(args[1])
 			if err != nil {
 				return nil, err
 			}
@@ -1157,12 +1179,12 @@ func (c *customContext) handleDebug() error {
 			return res, nil
 		},
 		"sql": func() (any, error) {
-			args := strings.SplitN(c.Message().Text, " ", 3)
-			if len(args) < 3 {
+			args := strings.SplitN(text, " ", 2)
+			if len(args) < 2 {
 				return "missing query", nil
 			}
 
-			rows, err := c.s.db.Raw(args[2]).Rows()
+			rows, err := c.s.db.Raw(args[1]).Rows()
 			if err != nil {
 				return nil, err
 			}
@@ -1182,11 +1204,24 @@ func (c *customContext) handleDebug() error {
 		},
 	}
 
+	replyTo := c.Message()
+	if replyTo.ReplyTo != nil {
+		// if this function was called as a retry callback, reply to the original message
+		replyTo = replyTo.ReplyTo
+	}
+
 	rm := &tele.ReplyMarkup{
-		InlineKeyboard: [][]tele.InlineButton{{{
-			Unique: btnKeyTypeCloseMenu,
-			Text:   "Close",
-		}}},
+		InlineKeyboard: [][]tele.InlineButton{{
+			{
+				Unique: btnKeyTypeRetryDebug,
+				Text:   "Retry",
+				Data:   text,
+			},
+			{
+				Unique: btnKeyTypeCloseMenu,
+				Text:   "Close",
+			},
+		}},
 	}
 
 	help := func() error {
@@ -1196,14 +1231,15 @@ func (c *customContext) handleDebug() error {
 		}
 		slices.Sort(lines)
 		res := "Invalid debug command. Options:\n\n" + strings.Join(lines, "")
-		return c.Reply(res, tele.ModeMarkdown, rm)
+		_, err := c.Bot().Reply(replyTo, res, tele.ModeMarkdown, rm)
+		return err
 	}
 
-	if len(c.Args()) == 0 {
+	if len(args) == 0 {
 		return help()
 	}
 
-	handler, ok := handlers[c.Args()[0]]
+	handler, ok := handlers[args[0]]
 	if !ok {
 		return help()
 	}
@@ -1224,7 +1260,8 @@ func (c *customContext) handleDebug() error {
 		if end > len(valStr) {
 			end = len(valStr)
 		}
-		if err := c.Reply(
+		if _, err := c.Bot().Reply(
+			replyTo,
 			fmt.Sprintf("```json\n%s```", valStr[off:end]),
 			tele.ModeMarkdown,
 			rm,

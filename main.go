@@ -163,7 +163,9 @@ func main() {
 
 	b.Handle("/start", wrapHandler((*customContext).handleStart))
 	b.Handle(tele.OnText, wrapHandler((*customContext).handleText))
+
 	b.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
+	b.Handle("\f"+btnKeyTypeRetryDebug, wrapHandler((*customContext).handleDebugRetry), allowlist(*adminID))
 
 	authed := b.Group()
 	authed.Use(s.checkLoggedIn)
