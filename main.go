@@ -365,6 +365,7 @@ func (s *server) loadActiveTrips() {
 	}
 
 	for _, u := range users {
+		u := u
 		if u.CurrentTripCode != "" {
 			log.Printf("starting active trip watch for %d", u.ID)
 			// nil context, we are not using any shorthands in watchActiveTrip
