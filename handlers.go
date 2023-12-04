@@ -82,10 +82,6 @@ func (c *customContext) handleText() error {
 			return err
 		}
 
-		c.user.Email = ""
-		c.user.EmailMessageID = 0
-		c.user.State = UserStateLoggedIn
-
 		dbToken := Token{
 			ID:    c.user.ID,
 			Token: tok,
@@ -101,6 +97,10 @@ func (c *customContext) handleText() error {
 		if err := c.Bot().Delete(m); err != nil {
 			return err
 		}
+
+		c.user.Email = ""
+		c.user.EmailMessageID = 0
+		c.user.State = UserStateLoggedIn
 
 		return c.handleHelp()
 	case UserStateLoggedIn:
