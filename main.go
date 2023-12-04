@@ -341,8 +341,9 @@ func (s *server) refreshTokensWatcher() {
 			}
 
 			for _, tok := range tokens {
-				// Access key expiry is 2 minutes, refresh key expiry is at least 7 days (?)
-				// TODO: fill correct duration
+				// Refresh key is used to get new access key, so we refresh it if it's about to expire.
+				// Access key expiry is 2 minutes, refresh key expiry is 7 days
+				// It's easier to grab saved access token expiry than to parse JWT and get issued at.
 				if time.Since(tok.Token.Expiry) < 6*24*time.Hour {
 					continue
 				}
