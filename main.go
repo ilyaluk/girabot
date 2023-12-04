@@ -313,7 +313,7 @@ func getAction(c tele.Context, u User) string {
 		return fmt.Sprintf("<weird upd: %+v>", c.Update())
 	}
 	if c.Message().Location != nil {
-		return "<locatiion>"
+		return "<location>"
 	}
 
 	// do not send PII

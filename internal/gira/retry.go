@@ -23,6 +23,7 @@ type retryableTransport struct {
 var (
 	requestsCnt     = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_requests_total"})
 	sentRequestsCnt = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_sent_requests_total"})
+	timeoutsCnt     = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_timeout_retries_total"})
 	retriesCnt      = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_retries_total"})
 )
 
@@ -64,6 +65,7 @@ func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error
 		resp, err = t.inner.RoundTrip(req)
 		if errors.Is(err, context.DeadlineExceeded) {
 			log.Printf("retry: num %d, request timed out(%v): %s", i, requestTimeout, err)
+			timeoutsCnt.Inc()
 			continue
 		}
 		if err != nil {
