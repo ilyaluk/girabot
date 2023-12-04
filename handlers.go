@@ -867,7 +867,7 @@ func (c *customContext) handleRateSubmit() error {
 		return c.Edit("No last trip code, can't submit rating")
 	}
 	if c.user.CurrentTripRating.Rating == 0 {
-		return c.Edit("Please select some stars first")
+		return c.Edit("Please select some stars first", getStarButtons(0))
 	}
 
 	ok, err := c.gira.RateTrip(c.ctx, c.user.CurrentTripCode, c.user.CurrentTripRating)
@@ -875,7 +875,7 @@ func (c *customContext) handleRateSubmit() error {
 		return err
 	}
 	if !ok {
-		return c.Edit("Can't rate trip, try again?")
+		return c.Edit("Can't rate trip, try again?", getStarButtons(c.user.CurrentTripRating.Rating))
 	}
 
 	stars := strings.Repeat("⭐️", c.user.CurrentTripRating.Rating) + strings.Repeat("☆", 5-c.user.CurrentTripRating.Rating)
