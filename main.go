@@ -368,8 +368,8 @@ func (s *server) loadActiveTrips() {
 		u := u
 		if u.CurrentTripCode != "" {
 			log.Printf("starting active trip watch for %d", u.ID)
-			// nil context, we are not using any shorthands in watchActiveTrip
-			c, cancel := s.newCustomContext(nil, &u)
+			// empty context update, we are not using any shorthands in watchActiveTrip
+			c, cancel := s.newCustomContext(s.bot.NewContext(tele.Update{}), &u)
 			go func() {
 				defer cancel()
 				if err := c.watchActiveTrip(false); err != nil {
