@@ -797,7 +797,13 @@ func (c *customContext) handleSendRateMsg() error {
 	}
 
 	c.user.RateMessageID = strconv.Itoa(m.ID)
-	return nil
+
+	// this function might not called with a saved hook (from watchActiveTrip), so we need to save the user manually
+	return c.s.db.Model(c.user).
+		Update("CurrentTripRating", gira.TripRating{}).
+		Update("CurrentTripRateAwaiting", true).
+		Update("RateMessageID", strconv.Itoa(m.ID)).
+		Error
 }
 
 func (c *customContext) handleRateStar() error {

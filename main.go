@@ -308,6 +308,9 @@ func getAction(c tele.Context, u User) string {
 	if c.Callback() != nil {
 		return fmt.Sprintf("cb: uniq:%s, data:%s", c.Callback().Unique, c.Callback().Data)
 	}
+	if c.Message() == nil {
+		return fmt.Sprintf("<weird upd: %+v>", c.Update())
+	}
 	if c.Message().Location != nil {
 		return "<locatiion>"
 	}
@@ -366,7 +369,7 @@ func (s *server) loadActiveTrips() {
 
 	for _, u := range users {
 		u := u
-		if u.CurrentTripCode != "" {
+		if u.CurrentTripCode != "" && !u.CurrentTripRateAwaiting {
 			log.Printf("starting active trip watch for %d", u.ID)
 			// empty context update, we are not using any shorthands in watchActiveTrip
 			c, cancel := s.newCustomContext(s.bot.NewContext(tele.Update{}), &u)
