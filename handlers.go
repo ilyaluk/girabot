@@ -206,7 +206,8 @@ const (
 	btnKeyTypeBike            = "bike"
 	btnKeyTypeBikeUnlock      = "unlock_bike"
 
-	btnKeyTypeCloseMenu = "close_menu"
+	btnKeyTypeCloseMenu          = "close_menu"
+	btnKeyTypeCloseMenuKeepReply = "close_menu_keep_reply"
 
 	btnKeyTypeAddFav    = "add_favorite"
 	btnKeyTypeRenameFav = "rename_favorite"
@@ -572,13 +573,17 @@ func (c *customContext) handleUnlockBike() error {
 	)
 }
 
-func (c *customContext) deleteCallbackMessage() error {
+func (c *customContext) deleteCallbackMessageWithReply() error {
 	if c.Message().ReplyTo != nil && !c.Message().ReplyTo.Sender.IsBot {
 		if err := c.Bot().Delete(c.Message().ReplyTo); err != nil {
 			return err
 		}
 	}
 
+	return c.Delete()
+}
+
+func (c *customContext) deleteCallbackMessage() error {
 	return c.Delete()
 }
 
@@ -1008,12 +1013,7 @@ func (c *customContext) handleShowFavorites() error {
 }
 
 func (c *customContext) handleDebug() error {
-	_, args, ok := strings.Cut(c.Text(), " ")
-	if !ok {
-		return c.Send("Missing debug command")
-	}
-
-	return c.runDebug(args)
+	return c.runDebug(c.Text())
 }
 
 func (c *customContext) handleDebugRetry() error {
@@ -1021,17 +1021,26 @@ func (c *customContext) handleDebugRetry() error {
 		return c.Send("No callback")
 	}
 
-	return c.runDebug(c.Callback().Data)
+	if c.Message().ReplyTo == nil {
+		return c.Send("No reply, can't retry")
+	}
+
+	return c.runDebug(c.Message().ReplyTo.Text)
 }
 
 func (c *customContext) runDebug(text string) error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Println("panic in debug handler:", err)
+			_ = c.Send(fmt.Sprintf("Panic: %v", err))
 		}
 	}()
 
+	// remove /debug command
+	_, text, _ = strings.Cut(text, " ")
+	// split args for easier parsing
 	args := strings.Split(text, " ")
+	log.Printf("running debug command: %+v", args)
 
 	handlers := map[string]func() (any, error){
 		"user": func() (any, error) {
@@ -1215,10 +1224,9 @@ func (c *customContext) runDebug(text string) error {
 			{
 				Unique: btnKeyTypeRetryDebug,
 				Text:   "Retry",
-				Data:   text,
 			},
 			{
-				Unique: btnKeyTypeCloseMenu,
+				Unique: btnKeyTypeCloseMenuKeepReply,
 				Text:   "Close",
 			},
 		}},
