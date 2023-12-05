@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"girabot/internal/giraauth"
 	"log"
 	"math"
 	"slices"
@@ -21,7 +20,8 @@ import (
 	tele "gopkg.in/telebot.v3"
 	"gorm.io/gorm/clause"
 
-	"girabot/internal/gira"
+	"github.com/jilyaluk/girabot/internal/gira"
+	"github.com/jilyaluk/girabot/internal/giraauth"
 )
 
 func (c *customContext) handleStart() error {
