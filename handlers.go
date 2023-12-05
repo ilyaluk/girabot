@@ -193,10 +193,16 @@ func (c *customContext) handleStatus() error {
 		}
 	}
 
+	var balanceWarning string
+	if info.Balance < 0 {
+		balanceWarning = " ⚠️ _You won't be able to unlock bikes until you top up in official app._"
+	}
+
 	return c.Send(fmt.Sprintf(
-		"Logged in. Gira account info:\nName: `%s`\nBalance: `%.2f€`\nBonus: `%d`\n%s",
+		"Logged in. Gira account info:\nName: `%s`\nBalance: `%.2f€`%s\nBonus: `%d`\n%s",
 		info.Name,
 		info.Balance,
+		balanceWarning,
 		info.Bonus,
 		subscr,
 	), tele.ModeMarkdown)
