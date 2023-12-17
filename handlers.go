@@ -157,8 +157,7 @@ func (c *customContext) handleFeedback() error {
 type UserState int
 
 const (
-	UserStateNone UserState = iota
-	UserStateWaitingForEmail
+	UserStateWaitingForEmail UserState = iota + 1
 	UserStateWaitingForPassword
 	UserStateLoggedIn
 	UserStateWaitingForFavName
