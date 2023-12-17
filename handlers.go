@@ -199,11 +199,16 @@ func (c *customContext) handleStatus() error {
 	}
 
 	return c.Send(fmt.Sprintf(
-		"Logged in. Gira account info:\nName: `%s`\nBalance: `%.2f€`%s\nBonus: `%d`\n%s",
+		"Logged in. Gira account info:\n"+
+			"Name: `%s`\n"+
+			"Balance: `%.0f€`%s\n"+
+			"Bonus: `%d` (`%d€`)\n"+
+			"%s",
 		info.Name,
 		info.Balance,
 		balanceWarning,
 		info.Bonus,
+		info.Bonus/500,
 		subscr,
 	), tele.ModeMarkdown)
 }
@@ -803,13 +808,14 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 				"🚲 Bike: %s\n"+
 				"🕑 Duration: %s\n"+
 				"%s"+
-				"💰 Points earned: %d (total %d)\n"+
+				"💰 Points earned: +%d, total %d (%d€)\n"+
 				"%s",
 			trip.Bike,
 			trip.PrettyDuration(),
 			costStr,
 			trip.TripPoints,
 			trip.ClientPoints,
+			trip.ClientPoints/500,
 			moneyWarning,
 		),
 		rm,
