@@ -78,7 +78,7 @@ func convertTokens(ts tokens) (*oauth2.Token, error) {
 
 var (
 	ErrInvalidCredentials  = fmt.Errorf("giraauth: invalid credentials")
-	ErrInvalidRefreshToken = fmt.Errorf("giraauth: invalid refresh token, try /login again")
+	ErrInvalidRefreshToken = fmt.Errorf("giraauth: invalid refresh token")
 )
 
 func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal any) error {

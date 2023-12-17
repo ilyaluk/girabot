@@ -290,6 +290,23 @@ func (s *server) onError(err error, c tele.Context) {
 		log.Println("bot: error sending recovered error:", err)
 	}
 
+	if u.ID != 0 {
+		// handle some known errors
+		var prettyErrorMsg string
+
+		if errors.Is(err, giraauth.ErrInvalidRefreshToken) {
+			prettyErrorMsg = "For some reason, Gira Auth API invalidated your token. Please re-login via /login."
+		}
+
+		if prettyErrorMsg != "" {
+			if err := c.Send(prettyErrorMsg); err != nil {
+				log.Println("bot: error sending recovered pretty error to user:", err)
+			}
+			return
+		}
+
+	}
+
 	if u.ID != 0 && u.ID != *adminID {
 		msg := fmt.Sprintf(
 			"Internal error: %v.\nBot developer has been notified.",
