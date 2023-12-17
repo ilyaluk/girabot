@@ -769,7 +769,6 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 	var btns tele.Row
 	var costStr string
-	var moneyWarning string
 
 	if trip.Cost > 0 {
 		log.Printf("last trip was not free: %+v", trip)
@@ -792,8 +791,15 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 			})
 		}
 
+		status, err := c.gira.GetClientInfo(c.ctx)
+		if err != nil {
+			log.Printf("[uid:%d] ignored client info error: %v", c.user.ID, err)
+		} else {
+			costStr += fmt.Sprintf("💶 Account balance: %.0f€\n", status.Balance)
+		}
+
 		if !trip.CanUsePoints && !trip.CanPayWithMoney {
-			moneyWarning = "\n⚠️ You can't pay for this trip with points or money, please use official app to top up and pay for it.\n" +
+			costStr += "\n⚠️ You can't pay for this trip with points or money, please use official app to top up and pay for it.\n" +
 				"Rating the trip now might trigger some Gira bug and make it free, try not to do that. Or do, I don't care, it's your account."
 		}
 	}
@@ -807,16 +813,14 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 			"Trip ended, thanks for using BetterGiraBot!\n"+
 				"🚲 Bike: %s\n"+
 				"🕑 Duration: %s\n"+
-				"%s"+
 				"💰 Points earned: +%d, total %d (%d€)\n"+
 				"%s",
 			trip.Bike,
 			trip.PrettyDuration(),
-			costStr,
 			trip.TripPoints,
 			trip.ClientPoints,
 			trip.ClientPoints/500,
-			moneyWarning,
+			costStr,
 		),
 		rm,
 	); err != nil {
