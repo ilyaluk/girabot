@@ -852,7 +852,12 @@ func (c *customContext) handlePayPoints() error {
 
 	log.Printf("paid for %s with points: %d", tc, paid)
 
-	return c.Reply(fmt.Sprintf("Paid with points: %v", paid))
+	// remove pay buttons from trip message
+	if err := c.Edit(&tele.ReplyMarkup{}); err != nil {
+		return err
+	}
+
+	return c.Reply(fmt.Sprintf("Paid with points: -%v", paid))
 }
 
 func (c *customContext) handlePayMoney() error {
@@ -872,7 +877,12 @@ func (c *customContext) handlePayMoney() error {
 
 	log.Printf("paid for %s with money: %d", tc, paid)
 
-	return c.Reply(fmt.Sprintf("Paid with money: %v", paid))
+	// remove pay buttons from trip message
+	if err := c.Edit(&tele.ReplyMarkup{}); err != nil {
+		return err
+	}
+
+	return c.Reply(fmt.Sprintf("Paid with money: -%v", paid))
 }
 
 func (c *customContext) handleSendRateMsg() error {
