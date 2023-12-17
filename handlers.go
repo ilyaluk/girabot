@@ -1362,6 +1362,22 @@ func (c *customContext) runDebug(text string) error {
 			}
 			return res, nil
 		},
+		"broadcast": func() (any, error) {
+			args := strings.SplitN(text, " ", 3)
+			if len(args) < 3 {
+				return "usage: broadcast id1,id2,id3 message (may be multiline)", nil
+			}
+			ids := strings.Split(args[1], ",")
+			msg := args[2]
+			for _, idStr := range ids {
+				id, _ := strconv.Atoi(idStr)
+				if _, err := c.Bot().Send(tele.ChatID(id), msg, tele.ModeMarkdown); err != nil {
+					return nil, err
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			return "ok", nil
+		},
 	}
 
 	replyTo := c.Message()
