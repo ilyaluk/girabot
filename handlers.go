@@ -737,16 +737,23 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 
 	var costStr string
 	if trip.Cost != 0 {
-		costStr = fmt.Sprintf("\nCost:  %.2f€", trip.Cost)
+		costStr = fmt.Sprintf("🤑 Cost:  %.0f€\n", trip.Cost)
 	}
 
 	_, err := c.Bot().Edit(
 		c.getActiveTripMsg(),
 		fmt.Sprintf(
-			"Active trip:\nBike %s\nDuration ≥%s",
+			"*Active trip*:\n"+
+				"🚲 Bike %s\n"+
+				"🕑 Duration ≥%s\n"+
+				"%s"+
+				"\n🛟 To get Gira support, call +351 211 163 060 (press 2 for operator).",
 			trip.Bike,
 			trip.PrettyDuration(),
-		)+costStr, tele.ModeMarkdown)
+			costStr,
+		),
+		tele.ModeMarkdown,
+	)
 	if errors.Is(err, tele.ErrSameMessageContent) {
 		// if we got two updates at the same time, we might get this error from TG
 		return nil
@@ -756,10 +763,13 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 
 func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 	var btns tele.Row
+	var costStr string
 	var moneyWarning string
 
 	if trip.Cost > 0 {
 		log.Printf("last trip was not free: %+v", trip)
+
+		costStr = fmt.Sprintf("🤑 Cost: %.0f€\n", trip.Cost)
 
 		if trip.CanUsePoints {
 			btns = append(btns, tele.Btn{
@@ -790,14 +800,14 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 		tele.ChatID(c.user.ID),
 		fmt.Sprintf(
 			"Trip ended, thanks for using BetterGiraBot!\n"+
-				"Bike: %s\n"+
-				"Duration: %s\n"+
-				"Cost: %.0f€\n"+
-				"Points earned: %d (total %d)\n"+
+				"🚲 Bike: %s\n"+
+				"🕑 Duration: %s\n"+
+				"%s"+
+				"💰 Points earned: %d (total %d)\n"+
 				"%s",
 			trip.Bike,
 			trip.PrettyDuration(),
-			trip.Cost,
+			costStr,
 			trip.TripPoints,
 			trip.ClientPoints,
 			moneyWarning,
