@@ -722,6 +722,7 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 
 	if trip.Finished {
 		var btns tele.Row
+		var moneyWarning string
 
 		if trip.Cost > 0 {
 			log.Printf("last trip was not free: %+v", trip)
@@ -741,6 +742,11 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 					Data:   string(trip.Code),
 				})
 			}
+
+			if !trip.CanUsePoints && !trip.CanPayWithMoney {
+				moneyWarning = "\n⚠️ You can't pay for this trip with points or money, please use official app to top up and pay for it.\n" +
+					"Rating the trip now might trigger some Gira bug and make it free, try not to do that. Or do, I don't care, it's your account."
+			}
 		}
 
 		rm := &tele.ReplyMarkup{}
@@ -753,12 +759,14 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 					"Bike: %s\n"+
 					"Duration: %s\n"+
 					"Cost: %.0f€\n"+
-					"Points earned: %d (total %d)",
+					"Points earned: %d (total %d)\n"+
+					"%s",
 				trip.Bike,
 				trip.PrettyDuration(),
 				trip.Cost,
 				trip.TripPoints,
 				trip.ClientPoints,
+				moneyWarning,
 			),
 			rm,
 		); err != nil {
