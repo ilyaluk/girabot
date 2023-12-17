@@ -196,6 +196,7 @@ func main() {
 
 	authed.Handle("\f"+btnKeyTypeRateStar, wrapHandler((*customContext).handleRateStar))
 	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler((*customContext).handleRateAddText))
+	authed.Handle("\f"+btnKeyTypeRateCommentCancel, wrapHandler((*customContext).handleCancelAddComment))
 	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler((*customContext).handleRateSubmit))
 
 	authed.Handle("\f"+btnKeyTypePayPoints, wrapHandler((*customContext).handlePayPoints))

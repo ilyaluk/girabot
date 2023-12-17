@@ -221,9 +221,10 @@ const (
 	btnKeyTypeRenameFav = "rename_favorite"
 	btnKeyTypeRemoveFav = "remove_favorite"
 
-	btnKeyTypeRateStar    = "rate_star"
-	btnKeyTypeRateAddText = "rate_add_text"
-	btnKeyTypeRateSubmit  = "rate_submit"
+	btnKeyTypeRateStar          = "rate_star"
+	btnKeyTypeRateAddText       = "rate_add_text"
+	btnKeyTypeRateCommentCancel = "rate_comment_cancel"
+	btnKeyTypeRateSubmit        = "rate_submit"
 
 	btnKeyTypePayPoints = "trip_pay_points"
 	btnKeyTypePayMoney  = "trip_pay_money"
@@ -842,7 +843,11 @@ func (c *customContext) handleSendRateMsg() error {
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = true
 
-	m, err := c.Bot().Send(tele.ChatID(c.user.ID), "Please rate the trip\nDon't forget to submit", getStarButtons(0))
+	m, err := c.Bot().Send(
+		tele.ChatID(c.user.ID),
+		messageRateTrip,
+		getStarButtons(0),
+	)
 	if err != nil {
 		return err
 	}
@@ -910,7 +915,24 @@ func getStarButtons(rating int) *tele.ReplyMarkup {
 
 func (c *customContext) handleRateAddText() error {
 	c.user.State = UserStateWaitingForRateComment
-	return c.Edit("Please send your comment regarding the trip")
+	rm := &tele.ReplyMarkup{}
+	rm.Inline(tele.Row{{
+		Unique: btnKeyTypeRateCommentCancel,
+		Text:   "❌ Cancel",
+	}})
+	return c.Edit(
+		"Please send your comment regarding the trip",
+		rm,
+	)
+}
+
+func (c *customContext) handleCancelAddComment() error {
+	c.user.State = UserStateLoggedIn
+
+	return c.Edit(
+		messageRateTrip,
+		getStarButtons(c.user.CurrentTripRating.Rating),
+	)
 }
 
 func (c *customContext) handleRateSubmit() error {

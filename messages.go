@@ -65,3 +65,9 @@ const messageDonate = `
 
 Won't bother you with this message anymore. 🤗
 `
+
+const messageRateTrip = `
+📈 Please rate the trip.
+
+Don't forget to submit.
+`
