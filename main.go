@@ -294,8 +294,18 @@ func (s *server) onError(err error, c tele.Context) {
 		// handle some known errors
 		var prettyErrorMsg string
 
-		if errors.Is(err, giraauth.ErrInvalidRefreshToken) {
+		switch {
+		case errors.Is(err, giraauth.ErrInvalidRefreshToken):
 			prettyErrorMsg = "For some reason, Gira Auth API invalidated your token. Please re-login via /login."
+		case errors.Is(err, gira.ErrAlreadyHasActiveTrip):
+			prettyErrorMsg = "Gira says that you already have an active trip. This might be their bug. " +
+				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
+		case errors.Is(err, gira.ErrBikeAlreadyReserved):
+			prettyErrorMsg = "Gira says that the bike is already reserved. This might be their bug. " +
+				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
+		case errors.Is(err, gira.ErrNotEnoughBalance):
+			prettyErrorMsg = "You probably have negative balance and can't unlock the bike. " +
+				"Check your balance via /status and top up in official app if needed."
 		}
 
 		if prettyErrorMsg != "" {

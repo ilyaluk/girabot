@@ -3,6 +3,7 @@ package gira
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,13 @@ import (
 	"sync"
 
 	"github.com/hasura/go-graphql-client"
+)
+
+var (
+	ErrNoActiveTrip         = fmt.Errorf("gira: no active trip")
+	ErrAlreadyHasActiveTrip = fmt.Errorf("gira: already has active trip")
+	ErrBikeAlreadyReserved  = fmt.Errorf("gira: bike already reserved")
+	ErrNotEnoughBalance     = fmt.Errorf("gira: not enough balance")
 )
 
 type Client struct {
@@ -167,6 +175,18 @@ func (c *Client) ReserveBike(ctx context.Context, id BikeSerial) (bool, error) {
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"input": string(id),
 	}); err != nil {
+		var errs graphql.Errors
+		if errors.As(err, &errs) {
+			for _, err := range errs {
+				switch err.Message {
+				case "already_has_active_trip":
+					return false, ErrAlreadyHasActiveTrip
+				case "bike_already_reserved":
+					return false, ErrBikeAlreadyReserved
+				}
+			}
+		}
+
 		return false, err
 	}
 
@@ -191,13 +211,21 @@ func (c *Client) StartTrip(ctx context.Context) (bool, error) {
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, nil); err != nil {
+		var errs graphql.Errors
+		if errors.As(err, &errs) {
+			for _, err := range errs {
+				switch err.Message {
+				case "not_enough_balance":
+					return false, ErrNotEnoughBalance
+				}
+			}
+		}
+
 		return false, err
 	}
 
 	return mutation.StartTrip, nil
 }
-
-var ErrNoActiveTrip = fmt.Errorf("gira: no active trip")
 
 func (c *Client) GetActiveTrip(ctx context.Context) (Trip, error) {
 	var query struct {
