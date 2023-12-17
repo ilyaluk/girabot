@@ -968,10 +968,12 @@ func (c *customContext) handleRateSubmit() error {
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = false
 
-	if err := c.Edit(
-		fmt.Sprint("Rating submitted, thanks!\n", stars, comment),
-		&tele.ReplyMarkup{},
-	); err != nil {
+	// send separate message to clear annoying typing status
+	if err := c.Send(fmt.Sprint("Rating submitted, thanks!\n", stars, comment)); err != nil {
+		return err
+	}
+
+	if err := c.Delete(); err != nil {
 		return err
 	}
 
