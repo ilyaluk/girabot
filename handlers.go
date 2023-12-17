@@ -523,12 +523,10 @@ func (c *customContext) handleStation() error {
 
 	var dockBtns []tele.Btn
 	for _, dock := range docks {
-		bikeDesc := fmt.Sprintf("Dock %d; %s", dock.Number, dock.Bike.TextString())
-
 		dockBtns = append(dockBtns, tele.Btn{
 			Unique: btnKeyTypeBike,
 			Text:   dock.PrettyString(),
-			Data:   fmt.Sprintf("%s|%s", dock.Bike.Serial, bikeDesc),
+			Data:   dock.Bike.CallbackData(),
 		})
 	}
 
@@ -558,13 +556,16 @@ func (c *customContext) handleTapBike() error {
 		return c.Send("No callback")
 	}
 
-	bikeSerial, bikeDesc, _ := strings.Cut(cb.Data, "|")
+	bike, err := gira.BikeFromCallbackData(cb.Data)
+	if err != nil {
+		return err
+	}
 
 	btnsRow := []tele.InlineButton{
 		{
 			Text:   "🔓 Unlock",
 			Unique: btnKeyTypeBikeUnlock,
-			Data:   bikeSerial,
+			Data:   bike.CallbackData(),
 		},
 		{
 			Text:   "❌ Cancel",
@@ -572,7 +573,7 @@ func (c *customContext) handleTapBike() error {
 		},
 	}
 
-	return c.Send(bikeDesc+"\n\nTapping 'Unlock' will start the trip.", &tele.ReplyMarkup{
+	return c.Send(bike.TextString()+"\n\nTapping 'Unlock' will start the trip.", &tele.ReplyMarkup{
 		InlineKeyboard: [][]tele.InlineButton{btnsRow},
 	})
 }
@@ -589,16 +590,24 @@ func (c *customContext) handleUnlockBike() error {
 	}
 	defer cleanup()
 
-	if err := c.Edit("Unlocking bike..."); err != nil {
+	bike, err := gira.BikeFromCallbackData(cb.Data)
+	if err != nil {
 		return err
 	}
 
-	ok, err := c.gira.ReserveBike(c.ctx, gira.BikeSerial(cb.Data))
+	bikeDesc := bike.TextString() + "\n\n"
+
+	if err := c.Edit(bikeDesc + "Unlocking bike..."); err != nil {
+		return err
+	}
+
+	ok, err := c.gira.ReserveBike(c.ctx, bike.Serial)
 	if err != nil {
 		return err
 	}
 
 	if !ok {
+		log.Printf("[uid:%d] bike reserve failed: %+v", c.user.ID, bike)
 		return c.Edit("Bike can't be reserved, try again?")
 	}
 
@@ -608,6 +617,7 @@ func (c *customContext) handleUnlockBike() error {
 	}
 
 	if !ok {
+		log.Printf("[uid:%d] bike start trip failed: %+v", c.user.ID, bike)
 		return c.Edit("Bike can't be unlocked, try again?")
 	}
 
@@ -619,7 +629,8 @@ func (c *customContext) handleUnlockBike() error {
 
 	c.user.CurrentTripMessageID = strconv.Itoa(c.Message().ID)
 	return c.Edit(
-		"Unlocked bike, waiting for trip to start.\n"+
+		bikeDesc+
+			"Unlocked bike, waiting for trip to start.\n"+
 			"It might take some time to physically unlock the bike.",
 		&tele.ReplyMarkup{},
 	)

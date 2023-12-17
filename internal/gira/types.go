@@ -122,6 +122,9 @@ type Bike struct {
 	Name    string
 	Type    BikeType
 	Battery string
+
+	// set only if returned from GetStationDocks
+	DockNumber int
 }
 
 func (b Bike) PrettyString() string {
@@ -146,13 +149,53 @@ func (b Bike) PrettyBattery() string {
 }
 
 func (b Bike) TextString() string {
+	res := fmt.Sprintf("Dock %d; ", b.DockNumber)
+
 	switch b.Type {
 	case BikeTypeConventional:
-		return fmt.Sprintf("Bike️ %s", b.Name)
+		res += fmt.Sprintf("Bike️ %s", b.Name)
 	case BikeTypeElectric:
-		return fmt.Sprintf("Electric bike %s, battery %s", b.Name, b.TextBattery())
+		res += fmt.Sprintf("Electric bike %s, battery %s", b.Name, b.TextBattery())
+	default:
+		res += fmt.Sprintf("Unknown bike type %s", b.Name)
 	}
-	return fmt.Sprintf("Unknown bike type %s", b.Name)
+
+	return res
+}
+
+// CallbackData returns the callback data for the bike.
+// It contains enough data to show info about bike.
+func (b Bike) CallbackData() string {
+	return strings.Join([]string{
+		string(b.Serial),
+		b.Name,
+		b.Battery,
+		fmt.Sprint(b.DockNumber),
+	}, "|")
+}
+
+// BikeFromCallbackData parses the callback data and returns the bike.
+func BikeFromCallbackData(data string) (b Bike, err error) {
+	parts := strings.Split(data, "|")
+	if len(parts) != 4 {
+		return Bike{}, fmt.Errorf("invalid callback data: %s", data)
+	}
+
+	b = Bike{
+		Serial:  BikeSerial(parts[0]),
+		Name:    parts[1],
+		Battery: parts[2],
+	}
+	b.DockNumber, _ = strconv.Atoi(parts[3])
+
+	switch b.Name[0] {
+	case 'E':
+		b.Type = BikeTypeElectric
+	case 'C':
+		b.Type = BikeTypeConventional
+	}
+
+	return b, nil
 }
 
 func (b Bike) TextBattery() string {

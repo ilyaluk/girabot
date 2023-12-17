@@ -136,6 +136,7 @@ func (c *Client) GetStationDocks(ctx context.Context, id StationSerial) (Docks, 
 		for i, dock := range res {
 			if b.Parent == dock.Code {
 				found = true
+				b.DockNumber = dock.Number
 				res[i].Bike = &b
 				break
 			}
