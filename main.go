@@ -106,7 +106,7 @@ type server struct {
 	mu sync.Mutex
 	// tokenSources is a map of user ID to token source.
 	// It's used to cache token sources, also to persist one instance of token source per user due to locking.
-	tokenSouces map[int64]*tokenSource
+	tokenSources map[int64]*tokenSource
 }
 
 var (
@@ -118,8 +118,8 @@ func main() {
 	flag.Parse()
 
 	s := server{
-		auth:        giraauth.New(http.DefaultClient),
-		tokenSouces: map[int64]*tokenSource{},
+		auth:         giraauth.New(http.DefaultClient),
+		tokenSources: map[int64]*tokenSource{},
 	}
 
 	// open DB
@@ -418,16 +418,16 @@ func (s *server) getTokenSource(uid int64) oauth2.TokenSource {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if ts, ok := s.tokenSouces[uid]; ok {
+	if ts, ok := s.tokenSources[uid]; ok {
 		return ts
 	}
 
-	s.tokenSouces[uid] = &tokenSource{
+	s.tokenSources[uid] = &tokenSource{
 		db:   s.db,
 		auth: s.auth,
 		uid:  uid,
 	}
-	return s.tokenSouces[uid]
+	return s.tokenSources[uid]
 }
 
 func (c *customContext) getTokenSource() oauth2.TokenSource {
