@@ -103,27 +103,34 @@ func SubscribeActiveTrips(ctx context.Context, ts oauth2.TokenSource) (<-chan Tr
 	cb := func(msg qType) bool {
 		log.Printf("active trip detail: %+v", msg)
 
-		if msg.TripDetail.Error == 401 {
+		td := msg.TripDetail
+
+		if td.Error == 401 {
 			return false
 		}
 
-		startT, _ := time.Parse(time.RFC3339, msg.TripDetail.StartDate)
-		endT, _ := time.Parse(time.RFC3339, msg.TripDetail.EndDate)
+		// sometimes backend sends this dummy update, ignore it
+		if td.Code == "no_trip" {
+			return true
+		}
+
+		startT, _ := time.Parse(time.RFC3339, td.StartDate)
+		endT, _ := time.Parse(time.RFC3339, td.EndDate)
 		ch <- TripUpdate{
-			Code:            TripCode(msg.TripDetail.Code),
-			Bike:            msg.TripDetail.Bike,
+			Code:            TripCode(td.Code),
+			Bike:            td.Bike,
 			StartDate:       startT,
 			EndDate:         endT,
-			Cost:            msg.TripDetail.Cost,
-			Finished:        msg.TripDetail.Finished,
-			Canceled:        msg.TripDetail.Canceled,
-			CanPayWithMoney: msg.TripDetail.CanPayWithMoney,
-			CanUsePoints:    msg.TripDetail.CanUsePoints,
-			ClientPoints:    msg.TripDetail.ClientPoints,
-			TripPoints:      msg.TripDetail.TripPoints,
-			Period:          msg.TripDetail.Period,
-			PeriodTime:      msg.TripDetail.PeriodTime,
-			Error:           msg.TripDetail.Error,
+			Cost:            td.Cost,
+			Finished:        td.Finished,
+			Canceled:        td.Canceled,
+			CanPayWithMoney: td.CanPayWithMoney,
+			CanUsePoints:    td.CanUsePoints,
+			ClientPoints:    td.ClientPoints,
+			TripPoints:      td.TripPoints,
+			Period:          td.Period,
+			PeriodTime:      td.PeriodTime,
+			Error:           td.Error,
 		}
 		return true
 	}
