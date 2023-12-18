@@ -107,6 +107,9 @@ type server struct {
 	// tokenSources is a map of user ID to token source.
 	// It's used to cache token sources, also to persist one instance of token source per user due to locking.
 	tokenSources map[int64]*tokenSource
+	// activeTripsCancels is a map of user ID to cancel function for active trip watcher.
+	// It's used to cancel active trip watcher if for some reason two watchers are started for one user.
+	activeTripsCancels map[int64]context.CancelFunc
 }
 
 var (
@@ -118,8 +121,9 @@ func main() {
 	flag.Parse()
 
 	s := server{
-		auth:         giraauth.New(http.DefaultClient),
-		tokenSources: map[int64]*tokenSource{},
+		auth:               giraauth.New(http.DefaultClient),
+		tokenSources:       map[int64]*tokenSource{},
+		activeTripsCancels: map[int64]context.CancelFunc{},
 	}
 
 	// open DB

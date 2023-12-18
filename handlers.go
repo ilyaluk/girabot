@@ -655,11 +655,21 @@ func (c *customContext) deleteCallbackMessage() error {
 }
 
 func (c *customContext) watchActiveTrip(isNewTrip bool) error {
+	log.Printf("[uid:%d] watching active trip", c.user.ID)
 	// not using c.Send/Edit/etc here and in callees as it might be called upon start while reloading active trips
+
+	c.s.mu.Lock()
+	if oldCancel, ok := c.s.activeTripsCancels[c.user.ID]; ok {
+		// if for some reason we are already watching active trip, cancel it
+		oldCancel()
+	}
 
 	// probably no one should have trips longer than a day
 	ctx, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
 	defer cancel()
+
+	c.s.activeTripsCancels[c.user.ID] = cancel
+	c.s.mu.Unlock()
 
 	ch, err := gira.SubscribeActiveTrips(ctx, c.getTokenSource())
 	if err != nil {
