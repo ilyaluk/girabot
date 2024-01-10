@@ -213,10 +213,9 @@ func (c *customContext) handleStatus() error {
 }
 
 const (
-	btnKeyTypeStation         = "station"
-	btnKeyTypeStationNextPage = "next_stations"
-	btnKeyTypeBike            = "bike"
-	btnKeyTypeBikeUnlock      = "unlock_bike"
+	btnKeyTypeStation    = "station"
+	btnKeyTypeBike       = "bike"
+	btnKeyTypeBikeUnlock = "unlock_bike"
 
 	btnKeyTypeCloseMenu          = "close_menu"
 	btnKeyTypeCloseMenuKeepReply = "close_menu_keep_reply"
@@ -264,6 +263,8 @@ func (c *customContext) handleLocation() error {
 	return c.sendNearbyStations(c.Message().Location)
 }
 
+const stationMaxResults = 5
+
 func (c *customContext) sendNearbyStations(loc *tele.Location) error {
 	err, cleanup := c.sendStationLoader()
 	if err != nil {
@@ -284,17 +285,7 @@ func (c *customContext) sendNearbyStations(loc *tele.Location) error {
 		return cmp.Compare(distance(i, loc), distance(j, loc))
 	})
 
-	// do not store more than some reasonable amount of stations
-	ss = ss[:min(len(ss), stationMaxResults)]
-
-	// store last search results to db for paging to work
-	c.user.LastSearchLocation = loc
-	c.user.LastSearchResults = make([]gira.StationSerial, len(ss))
-	for i, s := range ss {
-		c.user.LastSearchResults[i] = s.Serial
-	}
-
-	return c.sendStationList(ss[:min(stationPageSize, len(ss))], true, 5, loc)
+	return c.sendStationList(ss[:min(stationMaxResults, len(ss))], loc)
 }
 
 func (c *customContext) sendStationLoader() (error, func()) {
@@ -337,16 +328,10 @@ func (c *customContext) sendTyping() (error, func()) {
 	}
 }
 
-const (
-	stationPageSize   = 5
-	stationMaxResults = 20
-	stationMaxFaves   = 50
-)
-
 // sendStationList sends a list of stations to the user.
 // If loc is not nil, it will also show the distance to the station.
 // Callers should not pass more than 5 stations at once.
-func (c *customContext) sendStationList(stations []gira.Station, next bool, nextOff int, loc *tele.Location) error {
+func (c *customContext) sendStationList(stations []gira.Station, loc *tele.Location) error {
 	stationsDocks := make([]gira.Docks, len(stations))
 	wg := sync.WaitGroup{}
 	wg.Add(len(stations))
@@ -409,19 +394,10 @@ func (c *customContext) sendStationList(stations []gira.Station, next bool, next
 		})
 	}
 
-	var lastRow []tele.InlineButton
-	if next {
-		lastRow = append(lastRow, tele.InlineButton{
-			Unique: btnKeyTypeStationNextPage,
-			Text:   "More",
-			Data:   fmt.Sprint(nextOff),
-		})
-	}
-	lastRow = append(lastRow, tele.InlineButton{
+	rm.InlineKeyboard = append(rm.InlineKeyboard, []tele.InlineButton{{
 		Unique: btnKeyTypeCloseMenu,
 		Text:   "Close",
-	})
-	rm.InlineKeyboard = append(rm.InlineKeyboard, lastRow)
+	}})
 
 	return c.Reply(sb.String(), tele.NoPreview, tele.ModeMarkdown, rm)
 }
@@ -450,56 +426,22 @@ func distance(station gira.Station, location *tele.Location) float64 {
 	return r * c
 }
 
-func (c *customContext) handleStationNextPage() error {
-	cb := c.Callback()
-	if cb == nil {
-		return c.Send("No callback")
-	}
-
-	err, cleanup := c.sendStationLoader()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	off, _ := strconv.Atoi(cb.Data)
-
-	res := c.user.LastSearchResults
-	stationSerials := res[min(off, len(res)):min(off+stationPageSize, len(res))]
-
-	if len(stationSerials) == 0 {
-		return c.Send("No more stations (bug?)")
-	}
-
-	var ss []gira.Station
-	for _, serial := range stationSerials {
-		s, err := c.gira.GetStationCached(c.ctx, serial)
-		if err != nil {
-			return err
-		}
-		ss = append(ss, s)
-	}
-
-	return c.sendStationList(
-		ss,
-		off+stationPageSize < len(c.user.LastSearchResults), off+stationPageSize,
-		c.user.LastSearchLocation,
-	)
-}
-
 func (c *customContext) handleStation() error {
 	cb := c.Callback()
 	if cb == nil {
 		return c.Send("No callback")
 	}
 
+	return c.handleStationInner(gira.StationSerial(cb.Data))
+}
+
+func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 	err, cleanup := c.sendTyping()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	serial := gira.StationSerial(cb.Data)
 	station, err := c.gira.GetStationCached(c.ctx, serial)
 	if err != nil {
 		return err
@@ -1049,6 +991,8 @@ func (c *customContext) handleRateSubmit() error {
 	return nil
 }
 
+const stationMaxFaves = 10
+
 func (c *customContext) handleAddFavorite() error {
 	cb := c.Callback()
 	if cb == nil {
@@ -1163,17 +1107,7 @@ func (c *customContext) handleShowFavorites() error {
 		return cmp.Compare(i.Number(), j.Number())
 	})
 
-	c.user.LastSearchLocation = nil
-	c.user.LastSearchResults = make([]gira.StationSerial, len(stations))
-	for i, s := range stations {
-		c.user.LastSearchResults[i] = s.Serial
-	}
-
-	return c.sendStationList(
-		stations[:min(stationPageSize, len(stations))],
-		len(stations) > stationPageSize, 5,
-		nil,
-	)
+	return c.sendStationList(stations, nil)
 }
 
 func (c *customContext) handleDebug() error {

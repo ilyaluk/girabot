@@ -50,11 +50,6 @@ type User struct {
 
 	FinishedTrips int
 
-	// either stations sorted by distance or favorites sorted by name
-	LastSearchResults []gira.StationSerial `gorm:"serializer:json"`
-	// if nil, will not show distances
-	LastSearchLocation *tele.Location `gorm:"serializer:json"`
-
 	SentDonateMessage bool
 }
 
@@ -79,13 +74,6 @@ type filteredUser User
 func (u filteredUser) String() string {
 	if u.Email != "" {
 		u.Email = "<email>"
-	}
-	if u.LastSearchLocation != nil {
-		u.LastSearchLocation = &tele.Location{Lat: 1, Lng: 1}
-	}
-	// print only number of results
-	u.LastSearchResults = []gira.StationSerial{
-		gira.StationSerial(fmt.Sprint(len(u.LastSearchResults))),
 	}
 	u.Favorites = map[gira.StationSerial]string{
 		gira.StationSerial(fmt.Sprint(len(u.Favorites))): "",
@@ -188,7 +176,6 @@ func main() {
 	authed.Handle(&btnFeedback, wrapHandler((*customContext).handleFeedback))
 
 	authed.Handle("\f"+btnKeyTypeStation, wrapHandler((*customContext).handleStation))
-	authed.Handle("\f"+btnKeyTypeStationNextPage, wrapHandler((*customContext).handleStationNextPage))
 	authed.Handle("\f"+btnKeyTypeBike, wrapHandler((*customContext).handleTapBike))
 	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler((*customContext).handleUnlockBike))
 	authed.Handle("\f"+btnKeyTypeCloseMenu, wrapHandler((*customContext).deleteCallbackMessageWithReply))
