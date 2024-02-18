@@ -1150,6 +1150,10 @@ func (c *customContext) handleShowFavorites() error {
 		stations = append(stations, s)
 	}
 
+	stations = slices.DeleteFunc(stations, func(i gira.Station) bool {
+		return i.Status != gira.AssetStatusActive
+	})
+
 	slices.SortFunc(stations, func(i, j gira.Station) int {
 		// first. compare by their label
 		if c := cmp.Compare(c.user.Favorites[i.Serial], c.user.Favorites[j.Serial]); c != 0 {
