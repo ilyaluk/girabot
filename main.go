@@ -170,11 +170,15 @@ func main() {
 
 	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(*adminID))
 
+	authed.Handle(&btnMap, wrapHandler((*customContext).handleShowMap))
+	authed.Handle(&btnCancelMenu, wrapHandler((*customContext).handleSendMenu))
+
 	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
 	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))
 	authed.Handle(&btnHelp, wrapHandler((*customContext).handleHelp))
 	authed.Handle(&btnFeedback, wrapHandler((*customContext).handleFeedback))
 
+	authed.Handle(tele.OnWebApp, wrapHandler((*customContext).handleWebAppData))
 	authed.Handle("\f"+btnKeyTypeStation, wrapHandler((*customContext).handleStation))
 	authed.Handle("\f"+btnKeyTypeBike, wrapHandler((*customContext).handleTapBike))
 	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler((*customContext).handleUnlockBike))

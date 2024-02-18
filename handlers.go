@@ -238,16 +238,19 @@ const (
 var (
 	menu = &tele.ReplyMarkup{ResizeKeyboard: true}
 
-	btnLocation  = menu.Location("📍 Send location")
-	btnFavorites = menu.Text("⭐️ Show favorites")
+	btnLocation  = menu.Location("📍 Location")
+	btnMap       = menu.Text("🗺️ Map")
+	btnFavorites = menu.Text("⭐️ Favorites")
 	btnStatus    = menu.Text("ℹ️ Status")
 	btnHelp      = menu.Text("❓ Help")
 	btnFeedback  = menu.Text("📝 Feedback")
+
+	btnCancelMenu = menu.Text("❌ Cancel")
 )
 
 func init() {
 	menu.Reply(
-		menu.Row(btnLocation, btnFavorites),
+		menu.Row(btnLocation, btnMap, btnFavorites),
 		menu.Row(btnStatus, btnHelp, btnFeedback),
 	)
 }
@@ -424,6 +427,19 @@ func distance(station gira.Station, location *tele.Location) float64 {
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	return r * c
+}
+
+func (c *customContext) handleWebAppData() error {
+	d := c.Message().WebAppData
+	if d == nil {
+		return c.Send("No data")
+	}
+
+	if err := c.handleSendMenu(); err != nil {
+		return err
+	}
+
+	return c.handleStationInner(gira.StationSerial(d.Data))
 }
 
 func (c *customContext) handleStation() error {
@@ -1074,6 +1090,25 @@ func (c *customContext) handleRenameFavorite() error {
 	return nil
 }
 
+func (c *customContext) handleShowMap() error {
+	encBikesDocks, err := c.getWebappStationInfo()
+	if err != nil {
+		return err
+	}
+
+	m := &tele.ReplyMarkup{ResizeKeyboard: true}
+	m.Reply(
+		m.Row(m.WebApp("🗺️ Map", &tele.WebApp{URL: "https://luk.moe/girabot#" + encBikesDocks})),
+		m.Row(btnCancelMenu),
+	)
+
+	return c.Send("Loaded stations. Press on the button again to open the map.", m)
+}
+
+func (c *customContext) handleSendMenu() error {
+	return c.Send("_Dummy message to overcome Telegram menu limitations_", tele.ModeMarkdown, menu)
+}
+
 func (c *customContext) handleShowFavorites() error {
 	if len(c.user.Favorites) == 0 {
 		return c.Send("No favorites yet, add some from station view")
@@ -1325,8 +1360,19 @@ func (c *customContext) runDebug(text string) error {
 			}
 			return "ok", nil
 		},
+		"webappStations": func() (any, error) {
+			ss, err := c.getWebappStations()
+			if err != nil {
+				return nil, err
+			}
+			val, _ := json.Marshal(ss)
+			fmt.Println(string(val))
+			return nil, nil
+		},
+		"webappInfo": func() (any, error) {
+			return c.getWebappStationInfo()
+		},
 	}
-
 	replyTo := c.Message()
 	if replyTo.ReplyTo != nil {
 		// if this function was called as a retry callback, reply to the original message
@@ -1392,4 +1438,239 @@ func (c *customContext) runDebug(text string) error {
 		}
 	}
 	return nil
+}
+
+func (c *customContext) getWebappStations() ([]webappStation, error) {
+	ss, err := c.gira.GetStations(c.ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	slices.SortFunc(ss, func(i, j gira.Station) int {
+		return strings.Compare(string(i.Serial), string(j.Serial))
+	})
+
+	var res []webappStation
+	for _, s := range ss {
+		res = append(res, webappStation{
+			Serial: string(s.Serial),
+			Lat:    s.Latitude,
+			Lng:    s.Longitude,
+			Name:   s.Number(),
+		})
+	}
+	return res, nil
+}
+
+type webappStation struct {
+	Serial string  `json:"serial"`
+	Lat    float64 `json:"lat"`
+	Lng    float64 `json:"lng"`
+	Name   string  `json:"name"`
+}
+
+var uploadedWebappStations = []gira.StationSerial{
+	"1000101",
+	"1000102",
+	"1000103",
+	"1000104",
+	"1000105",
+	"1000106",
+	"1000107",
+	"1000108",
+	"1000109",
+	"1000110",
+	"1000112",
+	"1000113",
+	"1000114",
+	"1000115",
+	"1000130",
+	"1000131",
+	"1000132",
+	"1000133",
+	"1000134",
+	"1000135",
+	"1000137",
+	"1000139",
+	"1000150",
+	"1000151",
+	"1000203",
+	"1000205",
+	"1000206",
+	"1000208",
+	"1000209",
+	"1000211",
+	"1000212",
+	"1000213",
+	"1000214",
+	"1000215",
+	"1000216",
+	"1000218",
+	"1000219",
+	"1000220",
+	"1000221",
+	"1000222",
+	"1000223",
+	"1000224",
+	"1000225",
+	"1000226",
+	"1000230",
+	"1000231",
+	"1000232",
+	"1000235",
+	"1000237",
+	"1000238",
+	"1000241",
+	"1000242",
+	"1000280",
+	"1000281",
+	"1000301",
+	"1000304",
+	"1000305",
+	"1000306",
+	"1000307",
+	"1000308",
+	"1000309",
+	"1000310",
+	"1000311",
+	"1000312",
+	"1000313",
+	"1000314",
+	"1000315",
+	"1000316",
+	"1000352",
+	"1000361",
+	"1000362",
+	"1000363",
+	"1000364",
+	"1000365",
+	"1000366",
+	"1000401",
+	"1000403",
+	"1000406",
+	"1000407",
+	"1000408",
+	"1000410",
+	"1000412",
+	"1000413",
+	"1000414",
+	"1000415",
+	"1000416",
+	"1000417",
+	"1000419",
+	"1000420",
+	"1000421",
+	"1000423",
+	"1000426",
+	"1000427",
+	"1000428",
+	"1000430",
+	"1000431",
+	"1000432",
+	"1000433",
+	"1000435",
+	"1000436",
+	"1000437",
+	"1000442",
+	"1000443",
+	"1000446",
+	"1000449",
+	"1000450",
+	"1000452",
+	"1000453",
+	"1000456",
+	"1000457",
+	"1000459",
+	"1000460",
+	"1000461",
+	"1000462",
+	"1000463",
+	"1000464",
+	"1000468",
+	"1000471",
+	"1000472",
+	"1000473",
+	"1000474",
+	"1000475",
+	"1000476",
+	"1000477",
+	"1000478",
+	"1000479",
+	"1000480",
+	"1000481",
+	"1000483",
+	"1000484",
+	"1000485",
+	"1000486",
+	"1000487",
+	"1000488",
+	"1000490",
+	"1000502",
+	"1000503",
+	"1000506",
+	"1000507",
+	"1000508",
+	"1000509",
+	"1000510",
+	"1000511",
+	"1000513",
+	"1000514",
+	"1000516",
+	"1000517",
+	"1000518",
+	"1000519",
+	"1000520",
+	"1000521",
+	"1000550",
+	"1000551",
+	"1000552",
+	"1000553",
+	"1000554",
+	"1000555",
+	"1000556",
+}
+
+func (c *customContext) getWebappStationInfo() (string, error) {
+	ss, err := c.gira.GetStations(c.ctx)
+	if err != nil {
+		return "", err
+	}
+
+	slices.SortFunc(ss, func(i, j gira.Station) int {
+		return strings.Compare(string(i.Serial), string(j.Serial))
+	})
+
+	// all urlsafe without $
+	var alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_.+!*'()"
+
+	encodedStations := map[gira.StationSerial]string{}
+	for _, s := range ss {
+		if s.Status != gira.AssetStatusActive {
+			encodedStations[s.Serial] = "$$"
+			continue
+		}
+		if s.Bikes > len(alphabet) || s.Docks > len(alphabet) {
+			return "", fmt.Errorf("too many bikes/docks: %+v", s)
+		}
+		encodedStations[s.Serial] = string(alphabet[s.Bikes]) + string(alphabet[s.Docks])
+	}
+
+	if len(encodedStations) != len(uploadedWebappStations) {
+		c.Bot().Send(tele.ChatID(*adminID), "uploadedWebappStations len mismatch")
+	}
+	for _, s := range uploadedWebappStations {
+		if _, ok := encodedStations[s]; !ok {
+			c.Bot().Send(tele.ChatID(*adminID), "uploadedWebappStations val missign")
+		}
+	}
+
+	var res strings.Builder
+	for _, s := range uploadedWebappStations {
+		if v, ok := encodedStations[s]; ok {
+			res.WriteString(v)
+		} else {
+			res.WriteString("$$")
+		}
+	}
+	return res.String(), nil
 }
