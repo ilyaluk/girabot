@@ -36,7 +36,7 @@ const messageHelp = `
 How to use this bot:
 
 📍 Send me a location, and I'll show you the nearest bike stations. You can share your location using convenient menu button, or any point via 📎 → Location.
-🅿️ Tap on a station to see available bikes.
+🅿️ Tap on a station to see available bikes. Or just send station number to view it.
 ⚡️ – electric bikes, ⚙️ – regular bikes, 💯 – full battery
 
 📋 Tap on a bike to open unlock menu.
