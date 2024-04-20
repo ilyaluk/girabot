@@ -78,7 +78,7 @@ func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error
 			break
 		}
 
-		log.Println("retry: num", i, "resp:", resp.StatusCode, string(respBytes[:200]))
+		log.Println("retry: num", i, "resp:", resp.StatusCode, string(respBytes[:min(len(respBytes), 200)]))
 
 		resp.Body = io.NopCloser(bytes.NewBuffer(respBytes))
 
