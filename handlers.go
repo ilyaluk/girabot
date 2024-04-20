@@ -1634,18 +1634,18 @@ func (c *customContext) getWebappStationInfo() (string, error) {
 	}
 
 	var convertErrors string
+	for s, val := range encodedStations {
+		if val == "$$" {
+			continue
+		}
 
-	if len(encodedStations) != len(uploadedWebappStations) {
-		convertErrors += fmt.Sprintf("len mismatch: uploaded: %d, from api: %d\n", len(uploadedWebappStations), len(encodedStations))
-	}
-	for _, s := range uploadedWebappStations {
-		if _, ok := encodedStations[s]; !ok {
-			convertErrors += fmt.Sprintf("station not in api: %s\n", s)
+		if _, ok := uploadedWebappStationsSet[s]; !ok {
+			convertErrors += fmt.Sprintf("station not uploaded: %s\n", s)
 		}
 	}
-	// if new station appeared, that would be deducatable from error (len diff + number of disappears)
 
 	if convertErrors != "" {
+		convertErrors += fmt.Sprintf("uploaded: %v, got from api: %v\n", len(uploadedWebappStations), len(encodedStations))
 		c.Bot().Send(tele.ChatID(*adminID), "convertWebapp data error:\n"+convertErrors)
 	}
 

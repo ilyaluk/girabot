@@ -162,3 +162,11 @@ var uploadedWebappStations = []gira.StationSerial{
 	"1000555",
 	"1000556",
 }
+
+var uploadedWebappStationsSet = map[gira.StationSerial]struct{}{}
+
+func init() {
+	for _, serial := range uploadedWebappStations {
+		uploadedWebappStationsSet[serial] = struct{}{}
+	}
+}
