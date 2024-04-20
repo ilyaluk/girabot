@@ -111,7 +111,7 @@ func (d Dock) ButtonString(isMax bool) string {
 		return fmt.Sprint(d.Number)
 	}
 	if isMax {
-		return fmt.Sprintf("<%d> %s", d.Number, d.Bike.PrettyString())
+		return fmt.Sprintf("{%d} %s", d.Number, d.Bike.PrettyString())
 	}
 	return fmt.Sprintf("[%d] %s", d.Number, d.Bike.PrettyString())
 }
