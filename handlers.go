@@ -792,12 +792,24 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 
 		costStr = fmt.Sprintf("🤑 Cost: %.0f€\n", trip.Cost)
 
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		status, err := c.gira.GetClientInfo(ctx)
+		if err != nil {
+			log.Printf("[uid:%d] ignored client info error: %v", c.user.ID, err)
+		}
+
 		if trip.CanUsePoints {
 			btns = append(btns, tele.Btn{
 				Unique: btnKeyTypePayPoints,
 				Text:   "💰 Pay with points",
 				Data:   string(trip.Code),
 			})
+
+			if err == nil {
+				costStr += fmt.Sprintf("💰 Points balance: %d€\n", status.Bonus/500)
+			}
 		}
 
 		if trip.CanPayWithMoney {
@@ -806,13 +818,10 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 				Text:   "💶 Pay with money",
 				Data:   string(trip.Code),
 			})
-		}
 
-		status, err := c.gira.GetClientInfo(c.ctx)
-		if err != nil {
-			log.Printf("[uid:%d] ignored client info error: %v", c.user.ID, err)
-		} else {
-			costStr += fmt.Sprintf("💶 Account balance: %.0f€\n", status.Balance)
+			if err == nil {
+				costStr += fmt.Sprintf("💶 Account balance: %.0f€\n", status.Balance)
+			}
 		}
 
 		if !trip.CanUsePoints && !trip.CanPayWithMoney {
