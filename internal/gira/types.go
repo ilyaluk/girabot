@@ -106,9 +106,12 @@ type Dock struct {
 	Bike *Bike
 }
 
-func (d Dock) PrettyString() string {
+func (d Dock) ButtonString(isMax bool) string {
 	if d.Bike == nil {
 		return fmt.Sprint(d.Number)
+	}
+	if isMax {
+		return fmt.Sprintf("<%d> %s", d.Number, d.Bike.PrettyString())
 	}
 	return fmt.Sprintf("[%d] %s", d.Number, d.Bike.PrettyString())
 }
@@ -205,6 +208,14 @@ func (b Bike) TextBattery() string {
 	default:
 		return b.Battery + "%"
 	}
+}
+
+func (b Bike) Number() int {
+	if len(b.Name) < 2 {
+		return 0
+	}
+	num, _ := strconv.Atoi(b.Name[1:])
+	return num
 }
 
 type Docks []Dock

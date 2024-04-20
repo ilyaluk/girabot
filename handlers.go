@@ -523,11 +523,18 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 		return cmp.Compare(i.Number, j.Number)
 	})
 
+	var maxEBike gira.Bike
+	for _, dock := range docks {
+		if dock.Bike.Type == gira.BikeTypeElectric && dock.Bike.Number() > maxEBike.Number() {
+			maxEBike = *dock.Bike
+		}
+	}
+
 	var dockBtns []tele.Btn
 	for _, dock := range docks {
 		dockBtns = append(dockBtns, tele.Btn{
 			Unique: btnKeyTypeBike,
-			Text:   dock.PrettyString(),
+			Text:   dock.ButtonString(dock.Bike.Serial == maxEBike.Serial),
 			Data:   dock.Bike.CallbackData(),
 		})
 	}
