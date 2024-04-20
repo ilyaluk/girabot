@@ -388,7 +388,17 @@ func (s *server) refreshTokensWatcher() {
 				log.Println("refreshing token for", tok.ID)
 				_, err := s.getTokenSource(tok.ID).Token()
 				if err != nil {
-					s.bot.OnError(fmt.Errorf("refreshing token for %d: %v", tok.ID, err), nil)
+					log.Printf("error refreshing token for %d: %v", tok.ID, err)
+
+					s.bot.OnError(fmt.Errorf("failed token refresh for %d: %v", tok.ID, err), nil)
+					s.db.Delete(&tok)
+
+					s.db.Model(&User{}).Where("id = ?", tok.ID).Update("state", 0)
+
+					_, err = s.bot.Send(tele.ChatID(tok.ID), "Your session has expired. Please log in again via /login.")
+					if err != nil {
+						log.Printf("error sending session expired message to %d: %v", tok.ID, err)
+					}
 					continue
 				}
 			}

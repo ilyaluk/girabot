@@ -43,6 +43,8 @@ func (c *customContext) handleLogin() error {
 
 func (c *customContext) handleText() error {
 	switch c.user.State {
+	case UserStateNone:
+		return c.handleStart()
 	case UserStateWaitingForEmail:
 		c.user.Email = c.Text()
 		c.user.EmailMessageID = c.Message().ID
@@ -157,7 +159,8 @@ func (c *customContext) handleFeedback() error {
 type UserState int
 
 const (
-	UserStateWaitingForEmail UserState = iota + 1
+	UserStateNone = UserState(iota)
+	UserStateWaitingForEmail
 	UserStateWaitingForPassword
 	UserStateLoggedIn
 	UserStateWaitingForFavName
