@@ -458,6 +458,7 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 	}
 	defer cleanup()
 
+	// we can call cached version, because we retrieved fresh station list prior while listing stations
 	station, err := c.gira.GetStationCached(c.ctx, serial)
 	if err != nil {
 		return err
@@ -1187,6 +1188,14 @@ func (c *customContext) runDebug(text string) error {
 			}
 			return *tok, nil
 		},
+		"token": func() (any, error) {
+			ts := c.getTokenSource()
+			tok, err := ts.Token()
+			if err != nil {
+				return nil, err
+			}
+			return tok.AccessToken, nil
+		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c.ctx)
 		},
@@ -1417,9 +1426,17 @@ func (c *customContext) runDebug(text string) error {
 		return err
 	}
 
-	valStr, err := json.MarshalIndent(val, "", "  ")
-	if err != nil {
-		return err
+	var valStr []byte
+	switch v := val.(type) {
+	case string:
+		valStr = []byte(v)
+	case []byte:
+		valStr = v
+	default:
+		valStr, err = json.MarshalIndent(val, "", "  ")
+		if err != nil {
+			return err
+		}
 	}
 
 	const chunk = 4000
