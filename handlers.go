@@ -1341,10 +1341,20 @@ func (c *customContext) runDebug(text string) error {
 			return c.gira.GetTrip(c.ctx, gira.TripCode(args[1]))
 		},
 		"tripHistory": func() (any, error) {
-			return c.gira.GetTripHistory(c.ctx)
+			if len(args) < 3 {
+				return "missing page and pageSize", nil
+			}
+			page, _ := strconv.Atoi(args[1])
+			pageSize, _ := strconv.Atoi(args[2])
+			return c.gira.GetTripHistory(c.ctx, page, pageSize)
 		},
 		"unratedTrips": func() (any, error) {
-			return c.gira.GetUnratedTrips(c.ctx)
+			if len(args) < 3 {
+				return "missing page and pageSize", nil
+			}
+			page, _ := strconv.Atoi(args[1])
+			pageSize, _ := strconv.Atoi(args[2])
+			return c.gira.GetUnratedTrips(c.ctx, page, pageSize)
 		},
 		"doReserve": func() (any, error) {
 			if len(args) == 1 {

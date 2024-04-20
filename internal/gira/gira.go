@@ -246,15 +246,28 @@ func (c *Client) GetTrip(ctx context.Context, code TripCode) (Trip, error) {
 		return Trip{}, fmt.Errorf("gira: expected 1 trip, got %d", len(query.Trip))
 	}
 	return query.Trip[0].export(), nil
-
 }
 
-func (c *Client) GetTripHistory(ctx context.Context) ([]Trip, error) {
+type pageInput struct {
+	PageNum  int32 `json:"_pageNum"`
+	PageSize int32 `json:"_pageSize"`
+}
+
+func (pageInput) GetGraphQLType() string {
+	return "PageInput"
+}
+
+func (c *Client) GetTripHistory(ctx context.Context, page, pageSize int) ([]Trip, error) {
 	var query struct {
-		TripHistory []innerTripDetail
+		TripHistory []innerTripDetail `graphql:"tripHistory(pageInput: $pageInput)"`
 	}
 
-	if err := c.c.Query(ctx, &query, nil); err != nil {
+	if err := c.c.Query(ctx, &query, map[string]any{
+		"pageInput": pageInput{
+			PageNum:  int32(page),
+			PageSize: int32(pageSize),
+		},
+	}); err != nil {
 		return nil, wrapError(err)
 	}
 
@@ -266,12 +279,17 @@ func (c *Client) GetTripHistory(ctx context.Context) ([]Trip, error) {
 
 }
 
-func (c *Client) GetUnratedTrips(ctx context.Context) ([]Trip, error) {
+func (c *Client) GetUnratedTrips(ctx context.Context, page, pageSize int) ([]Trip, error) {
 	var query struct {
-		UnratedTrips []innerTrip
+		UnratedTrips []innerTrip `graphql:"unratedTrips(pageInput: $pageInput)"`
 	}
 
-	if err := c.c.Query(ctx, &query, nil); err != nil {
+	if err := c.c.Query(ctx, &query, map[string]any{
+		"pageInput": pageInput{
+			PageNum:  int32(page),
+			PageSize: int32(pageSize),
+		},
+	}); err != nil {
 		return nil, wrapError(err)
 	}
 

@@ -304,9 +304,27 @@ func (s *server) onError(err error, c tele.Context) {
 			prettyErr = "You have negative balance and can't unlock the bike. " +
 				"Check your balance via /status and top up in official app if needed."
 		case errors.Is(err, gira.ErrTripIntervalLimit):
-			// TODO: log last trip time and show it to user
 			prettyErr = "You can't start a new trip so soon after the last one. " +
 				"Please wait a bit and try again."
+
+			cc, cancel := s.newCustomContext(c, &u)
+			defer cancel()
+
+			trips, err := cc.gira.GetTripHistory(cc.ctx, 1, 1)
+			if err == nil && len(trips) == 1 {
+				t := trips[0].EndDate
+				delta := time.Now().Sub(t).Truncate(time.Second)
+				// check for reasonable time for previously ended trip.
+				if delta < time.Hour {
+					prettyErr = fmt.Sprintf("You can't start a new trip so soon. Last trip ended %v ago.\n", delta)
+					if delta < 5*time.Minute {
+						prettyErr += fmt.Sprintf("Please wait %v and try again.", 5*time.Minute-delta)
+					} else {
+						prettyErr += "Weird, you should be able to start a new trip after 5 minutes. Try again later. 🤷🏼"
+					}
+				}
+			}
+
 		case errors.Is(err, gira.ErrHasNoActiveSubscriptions):
 			prettyErr = "You don't have any active subscriptions. " +
 				"Please buy a subscription in official app and try again."
