@@ -104,7 +104,7 @@ func (c *customContext) handleText() error {
 
 		return c.handleHelp()
 	case UserStateLoggedIn:
-		return c.Send("Unknown command, try /help")
+		return c.handleLoggedInText()
 	case UserStateWaitingForFavName:
 		name := c.Text()
 		if utf8.RuneCountInString(name) > 2 {
@@ -427,6 +427,45 @@ func distance(station gira.Station, location *tele.Location) float64 {
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	return r * c
+}
+
+func (c *customContext) handleLoggedInText() error {
+	txt := c.Text()
+
+	// if got number, first try to treat it as station number:
+	if _, err := strconv.Atoi(txt); err == nil {
+		stations, err := c.gira.GetStations(c.ctx)
+		if err != nil {
+			return err
+		}
+
+		var station gira.Station
+		for _, s := range stations {
+			if s.Number() == txt {
+				station = s
+				break
+			}
+		}
+
+		if station.Status == "" {
+			return c.Send("Station not found")
+		}
+
+		if station.Status != gira.AssetStatusActive {
+			return c.Send("Sorry, station is not active")
+		}
+
+		return c.handleStationInner(station.Serial)
+	}
+
+	chr := strings.ToLower(txt[:1])[0]
+	if chr == 'e' || chr == 'c' {
+		// TODO: process as bike number
+		// We can't directly get bike by name, so we need to get all stations and then all docks.
+		// Maybe we can regularly cache all docks and bikes in the background.
+	}
+
+	return c.Send("Unknown command, try /help")
 }
 
 func (c *customContext) handleWebAppData() error {
