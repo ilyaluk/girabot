@@ -287,24 +287,36 @@ func (s *server) onError(err error, c tele.Context) {
 
 	if u.ID != 0 {
 		// handle some known errors
-		var prettyErrorMsg string
+		var prettyErr string
 
 		switch {
 		case errors.Is(err, giraauth.ErrInvalidRefreshToken):
-			prettyErrorMsg = "For some reason, Gira Auth API invalidated your token. Please re-login via /login."
+			prettyErr = "Gira Auth API says that your token is invalid. Please re-login via /login."
+
 		case errors.Is(err, gira.ErrAlreadyHasActiveTrip):
-			prettyErrorMsg = "Gira says that you already have an active trip. This might be their bug. " +
+			prettyErr = "Gira says that you already have an active trip. This is probably their bug. " +
 				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
 		case errors.Is(err, gira.ErrBikeAlreadyReserved):
-			prettyErrorMsg = "Gira says that the bike is already reserved. This might be their bug. " +
+			prettyErr = "Gira says that the bike is already reserved. This is probably their bug. " +
 				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
 		case errors.Is(err, gira.ErrNotEnoughBalance):
-			prettyErrorMsg = "You probably have negative balance and can't unlock the bike. " +
+			prettyErr = "You have negative balance and can't unlock the bike. " +
 				"Check your balance via /status and top up in official app if needed."
+		case errors.Is(err, gira.ErrTripIntervalLimit):
+			// TODO: log last trip time and show it to user
+			prettyErr = "You can't start a new trip so soon after the last one. " +
+				"Please wait a bit and try again."
+		case errors.Is(err, gira.ErrHasNoActiveSubscriptions):
+			prettyErr = "You don't have any active subscriptions. " +
+				"Please buy a subscription in official app and try again."
+		case errors.Is(err, gira.ErrNoServiceStatusFound):
+			prettyErr = "Gira service is not available. 🤷🏼"
+		case errors.Is(err, gira.ErrBikeAlreadyInTrip):
+			prettyErr = "The bike is already in a trip. Try another one."
 		}
 
-		if prettyErrorMsg != "" {
-			if err := c.Send(prettyErrorMsg); err != nil {
+		if prettyErr != "" {
+			if err := c.Send(prettyErr); err != nil {
 				log.Println("bot: error sending recovered pretty error to user:", err)
 			}
 			return

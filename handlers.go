@@ -565,6 +565,16 @@ func (c *customContext) handleUnlockBike() error {
 	}
 
 	ok, err := c.gira.ReserveBike(c.ctx, bike.Serial)
+
+	if errors.Is(err, gira.ErrBikeAlreadyReserved) {
+		log.Printf("[uid:%d] bike already reserved, trying to cancel: %+v", c.user.ID, bike)
+		// at least try to cancel the reservation, ignore errors
+		if cancelled, _ := c.gira.CancelBikeReserve(c.ctx); cancelled {
+			// then, retry to reserve again
+			ok, err = c.gira.ReserveBike(c.ctx, bike.Serial)
+		}
+	}
+
 	if err != nil {
 		return err
 	}

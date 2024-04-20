@@ -8,16 +8,24 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/hasura/go-graphql-client"
+
+	"github.com/jilyaluk/girabot/internal/giraauth"
 )
 
 var (
-	ErrNoActiveTrip         = fmt.Errorf("gira: no active trip")
-	ErrAlreadyHasActiveTrip = fmt.Errorf("gira: already has active trip")
-	ErrBikeAlreadyReserved  = fmt.Errorf("gira: bike already reserved")
-	ErrNotEnoughBalance     = fmt.Errorf("gira: not enough balance")
+	ErrNoActiveTrip = fmt.Errorf("gira: no active trip")
+
+	ErrAlreadyHasActiveTrip     = fmt.Errorf("gira: already has active trip")
+	ErrBikeAlreadyReserved      = fmt.Errorf("gira: bike already reserved")
+	ErrNotEnoughBalance         = fmt.Errorf("gira: not enough balance")
+	ErrTripIntervalLimit        = fmt.Errorf("gira: trip interval limit")
+	ErrHasNoActiveSubscriptions = fmt.Errorf("gira: has no active subscriptions")
+	ErrNoServiceStatusFound     = fmt.Errorf("gira: no service status found")
+	ErrBikeAlreadyInTrip        = fmt.Errorf("gira: bike already in trip")
 )
 
 type Client struct {
@@ -47,7 +55,7 @@ func (c *Client) GetClientInfo(ctx context.Context) (ClientInfo, error) {
 	}
 
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return ClientInfo{}, err
+		return ClientInfo{}, wrapError(err)
 	}
 
 	if len(query.Client) != 1 {
@@ -80,7 +88,7 @@ func (c *Client) getStationsNoCache(ctx context.Context) ([]Station, error) {
 		GetStations []innerStation
 	}
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 
 	res := make([]Station, len(query.GetStations))
@@ -130,7 +138,7 @@ func (c *Client) GetStationDocks(ctx context.Context, id StationSerial) (Docks, 
 		"input": string(id),
 	})
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 
 	res := make(Docks, 0, len(query.GetDocks))
@@ -175,19 +183,7 @@ func (c *Client) ReserveBike(ctx context.Context, id BikeSerial) (bool, error) {
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"input": string(id),
 	}); err != nil {
-		var errs graphql.Errors
-		if errors.As(err, &errs) {
-			for _, err := range errs {
-				switch err.Message {
-				case "already_has_active_trip":
-					return false, ErrAlreadyHasActiveTrip
-				case "bike_already_reserved":
-					return false, ErrBikeAlreadyReserved
-				}
-			}
-		}
-
-		return false, err
+		return false, wrapError(err)
 	}
 
 	return mutation.ReserveBike, nil
@@ -199,7 +195,7 @@ func (c *Client) CancelBikeReserve(ctx context.Context) (bool, error) {
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, nil); err != nil {
-		return false, err
+		return false, wrapError(err)
 	}
 
 	return mutation.CancelBikeReserve, nil
@@ -211,17 +207,7 @@ func (c *Client) StartTrip(ctx context.Context) (bool, error) {
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, nil); err != nil {
-		var errs graphql.Errors
-		if errors.As(err, &errs) {
-			for _, err := range errs {
-				switch err.Message {
-				case "not_enough_balance":
-					return false, ErrNotEnoughBalance
-				}
-			}
-		}
-
-		return false, err
+		return false, wrapError(err)
 	}
 
 	return mutation.StartTrip, nil
@@ -233,7 +219,7 @@ func (c *Client) GetActiveTrip(ctx context.Context) (Trip, error) {
 	}
 
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return Trip{}, err
+		return Trip{}, wrapError(err)
 	}
 
 	if query.ActiveTrip == nil {
@@ -250,7 +236,7 @@ func (c *Client) GetTrip(ctx context.Context, code TripCode) (Trip, error) {
 	if err := c.c.Query(ctx, &query, map[string]any{
 		"input": string(code),
 	}); err != nil {
-		return Trip{}, err
+		return Trip{}, wrapError(err)
 	}
 
 	if len(query.Trip) == 0 {
@@ -269,7 +255,7 @@ func (c *Client) GetTripHistory(ctx context.Context) ([]Trip, error) {
 	}
 
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 
 	res := make([]Trip, len(query.TripHistory))
@@ -286,7 +272,7 @@ func (c *Client) GetUnratedTrips(ctx context.Context) ([]Trip, error) {
 	}
 
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return nil, err
+		return nil, wrapError(err)
 	}
 
 	res := make([]Trip, len(query.UnratedTrips))
@@ -322,7 +308,7 @@ func (c *Client) RateTrip(ctx context.Context, code TripCode, rating TripRating)
 			Description: rating.Comment,
 		},
 	}); err != nil {
-		return false, err
+		return false, wrapError(err)
 	}
 
 	return mutation.RateTrip, nil
@@ -336,7 +322,7 @@ func (c *Client) PayTripWithPoints(ctx context.Context, id TripCode) (int, error
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"input": string(id),
 	}); err != nil {
-		return 0, err
+		return 0, wrapError(err)
 	}
 
 	return mutation.TripPay, nil
@@ -350,8 +336,51 @@ func (c *Client) PayTripWithMoney(ctx context.Context, id TripCode) (int, error)
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"input": string(id),
 	}); err != nil {
-		return 0, err
+		return 0, wrapError(err)
 	}
 
 	return mutation.TripPay, nil
+}
+
+func wrapError(err error) error {
+	var errs graphql.Errors
+	if errors.As(err, &errs) && len(errs) == 1 {
+		msg := errs[0].Message
+
+		// sigh
+		if strings.Contains(msg, giraauth.ErrInvalidRefreshToken.Error()) {
+			return giraauth.ErrInvalidRefreshToken
+		}
+
+		// this happens when token is deleted from DB for some reason (maybe refresh failed)
+		// as graphql lib breaks any errors to strings, we have to check like this...
+		if strings.Contains(msg, "record not found") {
+			return giraauth.ErrInvalidRefreshToken
+		}
+
+		if err := convertTripError(msg); err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+func convertTripError(msg string) error {
+	switch {
+	case strings.Contains(msg, "already_has_active_trip"):
+		return ErrAlreadyHasActiveTrip
+	case strings.Contains(msg, "bike_already_reserved"):
+		return ErrBikeAlreadyReserved
+	case strings.Contains(msg, "not_enough_balance"):
+		return ErrNotEnoughBalance
+	case strings.Contains(msg, "trip_interval_limit"):
+		return ErrTripIntervalLimit
+	case strings.Contains(msg, "has_no_active_subscriptions"):
+		return ErrHasNoActiveSubscriptions
+	case strings.Contains(msg, "no_service_status_found"):
+		return ErrNoServiceStatusFound
+	case strings.Contains(msg, "bike_already_in_trip"):
+		return ErrBikeAlreadyInTrip
+	}
+	return nil
 }
