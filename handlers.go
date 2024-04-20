@@ -233,6 +233,8 @@ const (
 	btnKeyTypePayMoney  = "trip_pay_money"
 
 	btnKeyTypeRetryDebug = "retry_debug"
+
+	btnKeyTypeIgnore = "ignore"
 )
 
 var (
@@ -487,7 +489,17 @@ func (c *customContext) handleStation() error {
 		return c.Send("No callback")
 	}
 
-	return c.handleStationInner(gira.StationSerial(cb.Data))
+	serial, cb2, _ := strings.Cut(cb.Data, "|")
+
+	if err := c.handleStationInner(gira.StationSerial(serial)); err != nil {
+		return err
+	}
+
+	if cb2 == "delete_msg" {
+		return c.deleteCallbackMessage()
+	}
+
+	return nil
 }
 
 func (c *customContext) handleStationInner(serial gira.StationSerial) error {
@@ -541,12 +553,26 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 
 	rm := &tele.ReplyMarkup{}
 
+	if len(dockBtns) > 1 && len(dockBtns)%2 == 1 {
+		dockBtns = append(dockBtns, tele.Btn{
+			Text:   " ",
+			Unique: btnKeyTypeIgnore,
+		})
+	}
+
 	btns := rm.Split(2, dockBtns)
 	btns = append([]tele.Row{c.getStationFavButtons(station.Serial)}, btns...)
-	btns = append(btns, tele.Row{{
-		Text:   "Close",
-		Unique: btnKeyTypeCloseMenu,
-	}})
+	btns = append(btns, tele.Row{
+		{
+			Text:   "🔄 Refresh",
+			Unique: btnKeyTypeStation,
+			Data:   string(serial) + "|delete_msg",
+		},
+		{
+			Text:   "❎ Close",
+			Unique: btnKeyTypeCloseMenu,
+		},
+	})
 	rm.Inline(btns...)
 
 	// send station location as main message with buttons of bikes
@@ -667,6 +693,10 @@ func (c *customContext) deleteCallbackMessageWithReply() error {
 
 func (c *customContext) deleteCallbackMessage() error {
 	return c.Delete()
+}
+
+func (c *customContext) respond() error {
+	return c.Respond()
 }
 
 func (c *customContext) watchActiveTrip(isNewTrip bool) error {
