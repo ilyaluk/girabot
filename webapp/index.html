@@ -1,182 +1,266 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
             integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-            crossorigin=""/>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            crossorigin=""
+        />
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <script
+            src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin=""></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"
+            crossorigin=""
+        ></script>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"
             integrity="sha512-EmfT33UCuNEdtd9zuhgQClh7gidfPpkp93WO8GEfAP3cLD++UM1AG9jsTUitCI9DH5nF72XaFePME92r767dHA=="
-            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <style>
-        html, body {
-            height: 100%;
-            margin: 0;
-        }
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        ></script>
+        <style>
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+            }
 
-        #map {
-            min-height: 100%;
-        }
+            #map {
+                min-height: 100%;
+            }
 
-        *:not(input):not(textarea) {
-            -webkit-user-select: none; /* disable selection/Copy of UIWebView */
-            -webkit-touch-callout: none; /* disable the IOS popup when long-press on a link */
-        }
-    </style>
-    <title>girabot web app</title>
-</head>
-<body>
-    <div id="map"></div>
-    <script>
-        Telegram.WebApp.expand();
+            *:not(input):not(textarea) {
+                -webkit-user-select: none; /* disable selection/Copy of UIWebView */
+                -webkit-touch-callout: none; /* disable the IOS popup when long-press on a link */
+            }
 
-        const bounds = L.latLngBounds([
-            [38.624926, -9.306846],
-            [38.861357, -9.010074]
-        ]);
-        var map = L.map('map', {
-            zoomControl: false,
-            maxBounds: bounds,
-            minZoom: 12,
-            maxZoom: 17,
-        }).setView(bounds.getCenter(), 13);
+            .loading {
+                width: 100%;
+                height: 100%;
+                position: fixed;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                background-color: rgba(0, 0, 0, 0.5);
+                z-index: 1000;
+            }
+            .loading-wheel {
+                width: 20px;
+                height: 20px;
+                margin-top: -40px;
+                margin-left: -40px;
 
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        }).addTo(map);
+                position: absolute;
+                top: 50%;
+                left: 50%;
 
-        let lastSelectedStation = null;
-        let lastSelectedMarker = null;
-        Telegram.WebApp.MainButton.onClick(() => {
-            Telegram.WebApp.sendData(lastSelectedStation.serial);
-            Telegram.WebApp.close();
-        });
-
-        function getStationMarker(station, isCurrent) {
-            let draw = SVG().viewbox(0, 0, 512, 512);
-
-            // credits to https://www.svgrepo.com/svg/481040/map-marker-6
-            let path = draw.path("M390.54,55.719C353.383,18.578,304.696,0,255.993,0c-48.688,0-97.391,18.578-134.547," +
-                    "55.719c-59.219,59.219-74.641,149.563-36.094,218.875C129.586,354.109,255.993,512,255.993," +
-                    "512s126.422-157.891,170.656-237.406C465.195,205.281,449.773,114.938,390.54,55.719z")
-                .transform({ scale: 0.94 })
-                .stroke({
-                    color: isCurrent ? '#ff2222' : '#333',
-                    width: isCurrent ? 30: 15,
-                })
-            let zindex = 0;
-
-            if (station.status !== "active" || !station.docks > 0) {
-                path.fill('#aaa');
-                zindex = -100;
-            } else {
-                const bikeFraction = station.bikes / station.docks;
-                let fillFraction = 0;
-                if (bikeFraction > 0) {
-                    // otherwise stations with 1 bike show almost empty
-                    fillFraction = (bikeFraction + 0.2) / 1.2;
+                border-width: 30px;
+                border-radius: 50%;
+                -webkit-animation: spin 1s linear infinite;
+            }
+            .style-2 .loading-wheel {
+                border-style: double;
+                border-color: #ccc transparent;
+            }
+            @-webkit-keyframes spin {
+                0% {
+                    -webkit-transform: rotate(0);
                 }
-                const pct = 100 - (100 * fillFraction)
+                100% {
+                    -webkit-transform: rotate(-360deg);
+                }
+            }
+        </style>
+        <title>girabot web app</title>
+    </head>
+    <body>
+        <div id="map"></div>
+        <div class="loading style-2"><div class="loading-wheel"></div></div>
+        <script>
+            Telegram.WebApp.expand();
 
-                let gradient = draw.gradient('linear', function(add) {
-                    add.stop({ offset: pct+'%', color: '#fff' })
-                    add.stop({ offset: pct+'%', color: '#89BF56' })
-                }).from(0, 0).to(0, 1)
-                path.attr({ fill: gradient });
-                // need to outweight default zindex generated from location
-                zindex = 1000*(station.bikes+1);
+            const bounds = L.latLngBounds([
+                [38.624926, -9.306846],
+                [38.861357, -9.010074],
+            ]);
+            var map = L.map("map", {
+                zoomControl: false,
+                maxBounds: bounds,
+                minZoom: 12,
+                maxZoom: 17,
+            }).setView(bounds.getCenter(), 13);
+
+            L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                attribution:
+                    '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            }).addTo(map);
+
+            let lastSelectedStation = null;
+            let lastSelectedMarker = null;
+            Telegram.WebApp.MainButton.onClick(() => {
+                Telegram.WebApp.MainButton.hide();
+                document.getElementsByClassName("loading")[0].style.display =
+                    "block";
+                fetch(
+                    "api/selectStation?number=" +
+                        lastSelectedStation.number +
+                        "&" +
+                        Telegram.WebApp.initData,
+                ).then(() => {
+                    Telegram.WebApp.close();
+                });
+            });
+
+            function getStationMarker(station, isCurrent) {
+                let draw = SVG().viewbox(0, 0, 512, 512);
+
+                // credits to https://www.svgrepo.com/svg/481040/map-marker-6
+                let path = draw
+                    .path(
+                        "M390.54,55.719C353.383,18.578,304.696,0,255.993,0c-48.688,0-97.391,18.578-134.547," +
+                            "55.719c-59.219,59.219-74.641,149.563-36.094,218.875C129.586,354.109,255.993,512,255.993," +
+                            "512s126.422-157.891,170.656-237.406C465.195,205.281,449.773,114.938,390.54,55.719z",
+                    )
+                    .transform({ scale: 0.94 })
+                    .stroke({
+                        color: isCurrent ? "#ff2222" : "#333",
+                        width: isCurrent ? 30 : 15,
+                    });
+                let zindex = 0;
+
+                let isFav = station.fav_name != null;
+
+                if (station.status !== "active" || !station.docks > 0) {
+                    path.fill("#aaa");
+                    zindex = -100;
+                } else {
+                    const bikeFraction = station.bikes / station.docks;
+                    let fillFraction = 0;
+                    if (bikeFraction > 0) {
+                        // otherwise stations with 1 bike show almost empty
+                        fillFraction = (bikeFraction + 0.2) / 1.2;
+                    }
+                    const pct = 100 - 100 * fillFraction;
+
+                    let gradient = draw
+                        .gradient("linear", function (add) {
+                            add.stop({ offset: pct + "%", color: "#fff" });
+                            add.stop({
+                                offset: pct + "%",
+                                color: isFav ? "#FFD700" : "#89BF56",
+                            });
+                        })
+                        .from(0, 0)
+                        .to(0, 1);
+                    path.attr({ fill: gradient });
+                    // need to outweight default zindex generated from location
+                    zindex = 1000 * (station.bikes + 1);
+
+                    if (isFav) {
+                        zindex += 1000 * 50;
+                    }
+                }
+
+                if (isCurrent) {
+                    zindex = 1000 * 1000;
+                }
+
+                let icon = "data:image/svg+xml;base64," + btoa(draw.svg());
+                const iconSize = 40;
+
+                return L.marker([station.lat, station.lng], {
+                    icon: L.icon({
+                        iconUrl: icon,
+                        iconSize: [iconSize, iconSize],
+                        iconAnchor: [iconSize / 2, iconSize],
+                    }),
+                    zIndexOffset: zindex,
+                });
             }
 
-            if (isCurrent) {
-                zindex = 110000;
-            }
+            function addStation(station) {
+                let marker = getStationMarker(station, false);
+                marker.addTo(map);
 
-            let icon = 'data:image/svg+xml;base64,' + btoa(draw.svg());
-            const iconSize = 40;
-
-            return L.marker([station.lat, station.lng], {
-                icon: L.icon({
-                    iconUrl: icon,
-                    iconSize: [iconSize, iconSize],
-                    iconAnchor: [iconSize/2, iconSize],
-                }),
-                zIndexOffset: zindex,
-            })
-        }
-
-        const alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_.+!*'()";
-
-        function addStation(station, bikesDocksEncoded) {
-            if (bikesDocksEncoded[0] === "$") {
-                station.bikes = station.docks = 0;
-                station.status = "inactive";
-            } else {
-                station.bikes = alphabet.indexOf(bikesDocksEncoded[0]);
-                station.docks = alphabet.indexOf(bikesDocksEncoded[1]);
-                station.status = "active";
-            }
-
-            let marker = getStationMarker(station, false);
-            marker.addTo(map);
-
-            if (marker.options.zIndexOffset < 0) {
-                // don't set click handler for inactive stations
-                return;
-            }
-
-            marker.on('click', () => {
-                if (lastSelectedStation && lastSelectedStation.serial === station.serial) {
+                if (marker.options.zIndexOffset < 0) {
+                    // don't set click handler for inactive stations
                     return;
                 }
 
-                if (lastSelectedMarker) {
-                    let newMarker = getStationMarker(lastSelectedStation, false);
-                    lastSelectedMarker
+                marker.on("click", () => {
+                    if (
+                        lastSelectedStation &&
+                        lastSelectedStation.number === station.number
+                    ) {
+                        return;
+                    }
+
+                    if (lastSelectedMarker) {
+                        let newMarker = getStationMarker(
+                            lastSelectedStation,
+                            false,
+                        );
+                        lastSelectedMarker
+                            .setIcon(newMarker.options.icon)
+                            .setZIndexOffset(newMarker.options.zIndexOffset);
+                    }
+
+                    let mb = Telegram.WebApp.MainButton;
+                    mb.show();
+                    mb.showProgress(false);
+                    mb.setText(
+                        "View station " +
+                            station.number +
+                            " (" +
+                            station.bikes +
+                            "/" +
+                            station.docks +
+                            " bikes)",
+                    );
+                    mb.hideProgress();
+
+                    let newMarker = getStationMarker(station, true);
+                    marker
                         .setIcon(newMarker.options.icon)
                         .setZIndexOffset(newMarker.options.zIndexOffset);
-                }
 
-                let mb = Telegram.WebApp.MainButton;
-                mb.show();
-                mb.showProgress(false);
-                mb.setText("View station " + station.name.split(" ")[0]+" ("+station.bikes+"/"+station.docks+" bikes)");
-                mb.hideProgress();
+                    lastSelectedStation = station;
+                    lastSelectedMarker = marker;
 
-                let newMarker = getStationMarker(station, true);
-                marker
-                    .setIcon(newMarker.options.icon)
-                    .setZIndexOffset(newMarker.options.zIndexOffset);
+                    Telegram.WebApp.HapticFeedback.selectionChanged();
+                });
+            }
 
-                lastSelectedStation = station;
-                lastSelectedMarker = marker;
+            // TODO: onError
+            fetch("api/stations?" + Telegram.WebApp.initData)
+                .then((r) => r.json())
+                .then((data) => {
+                    document.getElementsByClassName(
+                        "loading",
+                    )[0].style.display = "none";
 
-                Telegram.WebApp.HapticFeedback.selectionChanged();
-            })
-        }
+                    for (let [idx, station] of data.entries()) {
+                        addStation(station);
+                    }
+                });
 
-        fetch('stations.json')
-            .then(r => r.json())
-            .then(data => {
-                for (let [idx, station] of data.entries()) {
-                    addStation(station, location.hash.slice(1+idx*2, 1+idx*2+2));
-                }
-            })
+            map.on("locationfound", (e) => {
+                L.marker(e.latlng, { zIndexOffset: 200000 }).addTo(map);
+                L.circle(e.latlng, e.accuracy).addTo(map);
+            });
+            map.on("locationerror", (e) => {
+                // TODO: alert or something
+                console.log(e.message);
+            });
 
-        map.on('locationfound', (e) => {
-            L.marker(e.latlng, {zIndexOffset: 200000}).addTo(map);
-            L.circle(e.latlng, e.accuracy).addTo(map);
-        });
-        map.on('locationerror', (e) => {
-            // TODO: alert or something
-            console.log(e.message);
-        });
-
-        map.locate({setView: true, maxZoom: 15});
-    </script>
-</body>
+            map.locate({ setView: true, maxZoom: 15 });
+        </script>
+    </body>
 </html>

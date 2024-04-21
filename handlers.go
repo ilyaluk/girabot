@@ -244,18 +244,18 @@ var (
 	menu = &tele.ReplyMarkup{ResizeKeyboard: true}
 
 	btnLocation  = menu.Location("📍 Location")
-	btnMap       = menu.Text("🗺️ Map")
+	btnMapLegacy = menu.Text("🗺️ Map")
 	btnFavorites = menu.Text("⭐️ Favorites")
 	btnStatus    = menu.Text("ℹ️ Status")
 	btnHelp      = menu.Text("❓ Help")
 	btnFeedback  = menu.Text("📝 Feedback")
 
-	btnCancelMenu = menu.Text("❌ Cancel")
+	btnCancelMenuLegacy = menu.Text("❌ Cancel")
 )
 
 func init() {
 	menu.Reply(
-		menu.Row(btnLocation, btnMap, btnFavorites),
+		menu.Row(btnLocation, btnFavorites),
 		menu.Row(btnStatus, btnHelp, btnFeedback),
 	)
 }
@@ -471,19 +471,6 @@ func (c *customContext) handleLoggedInText() error {
 	}
 
 	return c.Send("Unknown command, try /help")
-}
-
-func (c *customContext) handleWebAppData() error {
-	d := c.Message().WebAppData
-	if d == nil {
-		return c.Send("No data")
-	}
-
-	if err := c.handleSendMenu(); err != nil {
-		return err
-	}
-
-	return c.handleStationInner(gira.StationSerial(d.Data))
 }
 
 func (c *customContext) handleStation() error {
@@ -1189,29 +1176,8 @@ func (c *customContext) handleRenameFavorite() error {
 	return nil
 }
 
-func (c *customContext) handleShowMap() error {
-	err, cleanup := c.sendTyping()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	encodedStations, err := c.getWebappStationInfo()
-	if err != nil {
-		return err
-	}
-
-	m := &tele.ReplyMarkup{ResizeKeyboard: true}
-	m.Reply(
-		m.Row(m.WebApp("🗺️ Map", &tele.WebApp{URL: "https://luk.moe/girabot#" + encodedStations})),
-		m.Row(btnCancelMenu),
-	)
-
-	return c.Send("Loaded stations. Press the button again to open the map.", m)
-}
-
-func (c *customContext) handleSendMenu() error {
-	return c.Send("_Dummy message to overcome Telegram menu limitations_", tele.ModeMarkdown, menu)
+func (c *customContext) handleShowMapLegacy() error {
+	return c.Send("This map button is no longer used. Yay, shorter menu!", menu)
 }
 
 func (c *customContext) handleShowFavorites() error {
@@ -1483,26 +1449,6 @@ func (c *customContext) runDebug(text string) error {
 			}
 			return "ok", nil
 		},
-		"webappStations": func() (any, error) {
-			ss, err := c.getWebappStations()
-			if err != nil {
-				return nil, err
-			}
-
-			fmt.Println("var uploadedWebappStations = []gira.StationSerial{")
-			for _, s := range ss {
-				fmt.Printf("\t\"%s\",\n", s.Serial)
-			}
-			fmt.Println("}")
-
-			val, _ := json.Marshal(ss)
-			fmt.Println("uploadedWebappStationsData:")
-			fmt.Println(string(val))
-			return nil, nil
-		},
-		"webappInfo": func() (any, error) {
-			return c.getWebappStationInfo()
-		},
 	}
 	replyTo := c.Message()
 	if replyTo.ReplyTo != nil {
@@ -1577,85 +1523,4 @@ func (c *customContext) runDebug(text string) error {
 		}
 	}
 	return nil
-}
-
-func (c *customContext) getWebappStations() ([]webappStation, error) {
-	ss, err := c.gira.GetStations(c.ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	slices.SortFunc(ss, func(i, j gira.Station) int {
-		return strings.Compare(string(i.Serial), string(j.Serial))
-	})
-
-	var res []webappStation
-	for _, s := range ss {
-		res = append(res, webappStation{
-			Serial: string(s.Serial),
-			Lat:    s.Latitude,
-			Lng:    s.Longitude,
-			Name:   s.Number(),
-		})
-	}
-	return res, nil
-}
-
-type webappStation struct {
-	Serial string  `json:"serial"`
-	Lat    float64 `json:"lat"`
-	Lng    float64 `json:"lng"`
-	Name   string  `json:"name"`
-}
-
-func (c *customContext) getWebappStationInfo() (string, error) {
-	ss, err := c.gira.GetStations(c.ctx)
-	if err != nil {
-		return "", err
-	}
-
-	slices.SortFunc(ss, func(i, j gira.Station) int {
-		return strings.Compare(string(i.Serial), string(j.Serial))
-	})
-
-	// all urlsafe without $
-	var alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_.+!*'()"
-
-	encodedStations := map[gira.StationSerial]string{}
-	for _, s := range ss {
-		if s.Status != gira.AssetStatusActive {
-			encodedStations[s.Serial] = "$$"
-			continue
-		}
-		if s.Bikes > len(alphabet) || s.Docks > len(alphabet) {
-			return "", fmt.Errorf("too many bikes/docks: %+v", s)
-		}
-		encodedStations[s.Serial] = string(alphabet[s.Bikes]) + string(alphabet[s.Docks])
-	}
-
-	var convertErrors string
-	for s, val := range encodedStations {
-		if val == "$$" {
-			continue
-		}
-
-		if _, ok := uploadedWebappStationsSet[s]; !ok {
-			convertErrors += fmt.Sprintf("station not uploaded: %s\n", s)
-		}
-	}
-
-	if convertErrors != "" {
-		convertErrors += fmt.Sprintf("uploaded: %v, got from api: %v\n", len(uploadedWebappStations), len(encodedStations))
-		c.Bot().Send(tele.ChatID(*adminID), "convertWebapp data error:\n"+convertErrors)
-	}
-
-	var res strings.Builder
-	for _, s := range uploadedWebappStations {
-		if v, ok := encodedStations[s]; ok {
-			res.WriteString(v)
-		} else {
-			res.WriteString("$$")
-		}
-	}
-	return res.String(), nil
 }

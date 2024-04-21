@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -101,8 +102,11 @@ type server struct {
 }
 
 var (
-	adminID = flag.Int64("admin-id", 111504781, "admin user ID")
-	dbPath  = flag.String("db-path", "girabot.db", "path to sqlite database")
+	adminID    = flag.Int64("admin-id", 111504781, "admin user ID")
+	dbPath     = flag.String("db-path", "girabot.db", "path to sqlite database")
+	domain     = flag.String("url", "luk.moe", "domain for webapp/webhook")
+	urlPrefix  = flag.String("url-prefix", "/girabot_prod", "url prefix for webapp")
+	listenPort = flag.String("port", "8001", "port to listen on")
 )
 
 func main() {
@@ -125,10 +129,32 @@ func main() {
 
 	s.db = db
 
+	webhook := &tele.Webhook{
+		SecretToken: getRandomString(32),
+		Endpoint: &tele.WebhookEndpoint{
+			PublicURL: fmt.Sprintf("https://%s%s/webhook", *domain, *urlPrefix),
+		},
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/webhook", webhook)
+	mux.HandleFunc("/api/stations", s.handleWebStations)
+	mux.HandleFunc("/api/selectStation", s.handleWebSelectStation)
+	mux.Handle("/", staticServer)
+
+	handler := http.StripPrefix(*urlPrefix, mux)
+
+	go func() {
+		log.Println("listening on", *listenPort)
+		if err := http.ListenAndServe(fmt.Sprint("127.0.0.1:", *listenPort), handler); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
 	// create bot
 	b, err := tele.NewBot(tele.Settings{
 		Token:   os.Getenv("TOKEN"),
-		Poller:  &tele.LongPoller{Timeout: 10 * time.Second},
+		Poller:  webhook,
 		OnError: s.onError,
 	})
 	if err != nil {
@@ -170,15 +196,14 @@ func main() {
 
 	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(*adminID))
 
-	authed.Handle(&btnMap, wrapHandler((*customContext).handleShowMap))
-	authed.Handle(&btnCancelMenu, wrapHandler((*customContext).handleSendMenu))
+	authed.Handle(&btnMapLegacy, wrapHandler((*customContext).handleShowMapLegacy))
+	authed.Handle(&btnCancelMenuLegacy, wrapHandler((*customContext).handleShowMapLegacy))
 
 	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
 	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))
 	authed.Handle(&btnHelp, wrapHandler((*customContext).handleHelp))
 	authed.Handle(&btnFeedback, wrapHandler((*customContext).handleFeedback))
 
-	authed.Handle(tele.OnWebApp, wrapHandler((*customContext).handleWebAppData))
 	authed.Handle("\f"+btnKeyTypeStation, wrapHandler((*customContext).handleStation))
 	authed.Handle("\f"+btnKeyTypeBike, wrapHandler((*customContext).handleTapBike))
 	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler((*customContext).handleUnlockBike))
@@ -203,6 +228,18 @@ func main() {
 
 	log.Println("bot start")
 	b.Start()
+}
+
+func getRandomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	b := make([]byte, n)
+	if _, err := crand.Read(b); err != nil {
+		return ""
+	}
+	for i := range b {
+		b[i] = letters[int(b[i])%len(letters)]
+	}
+	return string(b)
 }
 
 type customContext struct {

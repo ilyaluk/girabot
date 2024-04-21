@@ -12,13 +12,18 @@ girabot -h
 
 ## Details
 
-Your usual telegram bot. SQLite storage, long polling. telebot is used for telegram API.
+Your usual telegram bot. SQLite storage. telebot is used for telegram API.
+
+In current setup bot is expected to be run behind a reverse proxy, which is responsible for SSL termination.
+
+Set -domain and -url-prefix accordingly, and confugure your reverse proxy to forward requests to the bot port.
 
 ## Gira API details
 
 Gira has two API endpoints:
-* Auth API
-* GraphQL API
+
+- Auth API
+- GraphQL API
 
 Auth API is implemented in internal/giraauth package. It is used to get a JWT token for GraphQL API.
 It exchanges login-password for an access and refresh tokens pair. Refresh token is valid for 7 days, while access token for 2 minutes.
