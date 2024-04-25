@@ -170,7 +170,7 @@ func (s *server) validateTgUserId(r *http.Request) (int64, error) {
 	}
 
 	delta := time.Now().Sub(time.Unix(authDate, 0))
-	if math.Abs(delta.Minutes()) > 1 {
+	if math.Abs(delta.Minutes()) > 10 {
 		return 0, fmt.Errorf("bad auth_date")
 	}
 

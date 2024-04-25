@@ -479,9 +479,12 @@ func (c *customContext) handleStation() error {
 		return c.Send("No callback")
 	}
 
-	serial, cb2, _ := strings.Cut(cb.Data, "|")
+	serialStr, cb2, _ := strings.Cut(cb.Data, "|")
+	serial := gira.StationSerial(serialStr)
 
-	if err := c.handleStationInner(gira.StationSerial(serial)); err != nil {
+	// TODO: check that station is still active, it might become inactive after refresh
+
+	if err := c.handleStationInner(serial); err != nil {
 		return err
 	}
 
@@ -505,6 +508,7 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 		return err
 	}
 
+	// but docks are always retrieved fresh
 	docks, err := c.gira.GetStationDocks(c.ctx, serial)
 	if err != nil {
 		return err
