@@ -104,7 +104,7 @@ type server struct {
 var (
 	adminID    = flag.Int64("admin-id", 111504781, "admin user ID")
 	dbPath     = flag.String("db-path", "girabot.db", "path to sqlite database")
-	domain     = flag.String("url", "luk.moe", "domain for webapp/webhook")
+	domain     = flag.String("domain", "luk.moe", "domain for webapp/webhook")
 	urlPrefix  = flag.String("url-prefix", "/girabot_prod", "url prefix for webapp")
 	listenPort = flag.String("port", "8001", "port to listen on")
 )
