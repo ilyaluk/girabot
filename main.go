@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -385,6 +386,8 @@ func (s *server) onError(err error, c tele.Context) {
 			"Internal error: %v.\nBot developer has been notified.",
 			err,
 		)
+		// sometimes error message contains token, redact it
+		msg = strings.ReplaceAll(msg, s.bot.Token, "<token>")
 		if err := c.Send(msg); err != nil {
 			log.Println("bot: error sending recovered error to user:", err)
 		}
