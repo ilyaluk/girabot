@@ -100,6 +100,8 @@ type server struct {
 	// activeTripsCancels is a map of user ID to cancel function for active trip watcher.
 	// It's used to cancel active trip watcher if for some reason two watchers are started for one user.
 	activeTripsCancels map[int64]context.CancelFunc
+	// lastUpdateID is a last update ID to avoid processing the same update twice.
+	lastUpdateID int
 }
 
 var (
@@ -178,6 +180,7 @@ func main() {
 
 	// register middlewares and handlers
 	b.Use(middleware.Recover())
+	b.Use(s.checkUpdateIDMiddleware)
 	b.Use(s.addCustomContext)
 
 	b.Handle("/start", wrapHandler((*customContext).handleStart))
@@ -251,6 +254,33 @@ type customContext struct {
 	s    *server
 	user *User
 	gira *gira.Client
+}
+
+func (s *server) checkUpdateID(upd tele.Update) (doProcess bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// The update's unique identifier. Update identifiers start from a certain
+	// positive number and increase sequentially.
+	// <...>
+	// If there are no new updates for at least a week, then identifier
+	// of the next update will be chosen randomly instead of sequentially.
+	//
+	// So, ignoring updates that are within the last 100 updates, should work fine.
+	if s.lastUpdateID-100 < upd.ID && upd.ID <= s.lastUpdateID {
+		return false
+	}
+	s.lastUpdateID = upd.ID
+	return true
+}
+
+func (s *server) checkUpdateIDMiddleware(next tele.HandlerFunc) tele.HandlerFunc {
+	return func(c tele.Context) error {
+		if !s.checkUpdateID(c.Update()) {
+			return nil
+		}
+		return next(c)
+	}
 }
 
 // addCustomContext is a middleware that wraps telebot context to custom context,
