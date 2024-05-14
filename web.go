@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -133,15 +134,18 @@ func (s *server) handleWebSelectStation(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
-var hmacKey []byte
+var (
+	hmacKey     []byte
+	hmacKeyOnce sync.Once
+)
 
 func (s *server) validateTgUserId(r *http.Request) (int64, error) {
 	// https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
-	if hmacKey == nil {
+	hmacKeyOnce.Do(func() {
 		h := hmac.New(sha256.New, []byte("WebAppData"))
 		h.Write([]byte(s.bot.Token))
 		hmacKey = h.Sum(nil)
-	}
+	})
 
 	q := r.URL.Query()
 
