@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -337,21 +336,16 @@ func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, cont
 
 func (s *server) onError(err error, c tele.Context) {
 	var u User
-	username := "?"
-
 	if c != nil && c.Chat() != nil {
 		s.db.First(&u, c.Chat().ID)
-		username = c.Sender().Username
-		if username == "" {
-			username = strconv.Itoa(int(c.Sender().ID))
-		}
 	}
 
-	msg := fmt.Sprintf("recovered error from @%v (%v): %+v", username, getAction(c, u), err)
-	log.Println("bot:", msg)
-
-	if _, err := s.bot.Send(tele.ChatID(*adminID), msg); err != nil {
-		log.Println("bot: error sending recovered error:", err)
+	username := u.TGUsername
+	if username == "" {
+		username = "?"
+		if u.ID != 0 {
+			username = fmt.Sprintf("[%v](tg://user?id=%v)", u.ID, u.ID)
+		}
 	}
 
 	if u.ID != 0 {
@@ -365,12 +359,15 @@ func (s *server) onError(err error, c tele.Context) {
 		case errors.Is(err, gira.ErrAlreadyHasActiveTrip):
 			prettyErr = "Gira says that you already have an active trip. This is probably their bug. " +
 				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
+
 		case errors.Is(err, gira.ErrBikeAlreadyReserved):
 			prettyErr = "Gira says that the bike is already reserved. This is probably their bug. " +
 				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
+
 		case errors.Is(err, gira.ErrNotEnoughBalance):
 			prettyErr = "You have negative balance and can't unlock the bike. " +
 				"Check your balance via /status and top up in official app if needed."
+
 		case errors.Is(err, gira.ErrTripIntervalLimit):
 			prettyErr = "You can't start a new trip so soon after the last one. " +
 				"Please wait a bit and try again."
@@ -396,19 +393,28 @@ func (s *server) onError(err error, c tele.Context) {
 		case errors.Is(err, gira.ErrHasNoActiveSubscriptions):
 			prettyErr = "You don't have any active subscriptions. " +
 				"Please buy a subscription in official app and try again."
+
 		case errors.Is(err, gira.ErrNoServiceStatusFound):
 			prettyErr = "Gira service is not available. 🤷🏼"
+
 		case errors.Is(err, gira.ErrBikeAlreadyInTrip):
 			prettyErr = "The bike is already in a trip. Try another one."
 		}
 
 		if prettyErr != "" {
 			if err := c.Send(prettyErr); err != nil {
-				log.Println("bot: error sending recovered pretty error to user:", err)
+				msg := fmt.Sprintf("error sending pretty error to user %v: `%v`", username, err)
+				log.Println("bot:", msg)
+				s.bot.Send(tele.ChatID(*adminID), msg, tele.ModeMarkdown)
 			}
 			return
 		}
+	}
 
+	msg := fmt.Sprintf("recovered error from @%v (%v): `%+v`", username, getAction(c, u), err)
+	log.Println("bot:", msg)
+	if _, err := s.bot.Send(tele.ChatID(*adminID), msg, tele.ModeMarkdown); err != nil {
+		log.Println("bot: error sending recovered error:", err)
 	}
 
 	if u.ID != 0 && u.ID != *adminID {
