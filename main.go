@@ -266,8 +266,8 @@ func (s *server) checkUpdateID(upd tele.Update) (doProcess bool) {
 	// If there are no new updates for at least a week, then identifier
 	// of the next update will be chosen randomly instead of sequentially.
 	//
-	// So, ignoring updates that are within the last 100 updates, should work fine.
-	if s.lastUpdateID-100 < upd.ID && upd.ID <= s.lastUpdateID {
+	// So, ignoring updates that are within the last 10 updates, should work fine.
+	if s.lastUpdateID-10 < upd.ID && upd.ID <= s.lastUpdateID {
 		return false
 	}
 	s.lastUpdateID = upd.ID
