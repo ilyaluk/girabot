@@ -21,8 +21,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/jilyaluk/girabot/internal/gira"
-	"github.com/jilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/gira"
+	"github.com/ilyaluk/girabot/internal/giraauth"
 )
 
 type User struct {

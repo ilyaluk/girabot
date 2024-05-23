@@ -1,4 +1,4 @@
-module github.com/jilyaluk/girabot
+module github.com/ilyaluk/girabot
 
 go 1.21
 

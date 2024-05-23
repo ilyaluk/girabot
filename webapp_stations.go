@@ -1,6 +1,6 @@
 package main
 
-import "github.com/jilyaluk/girabot/internal/gira"
+import "github.com/ilyaluk/girabot/internal/gira"
 
 var uploadedWebappStations = []gira.StationSerial{
 	"1000101",

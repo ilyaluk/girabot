@@ -21,8 +21,8 @@ import (
 	tele "gopkg.in/telebot.v3"
 	"gorm.io/gorm/clause"
 
-	"github.com/jilyaluk/girabot/internal/gira"
-	"github.com/jilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/gira"
+	"github.com/ilyaluk/girabot/internal/giraauth"
 )
 
 func (c *customContext) handleStart() error {

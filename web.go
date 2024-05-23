@@ -17,7 +17,7 @@ import (
 	"golang.org/x/oauth2"
 	tele "gopkg.in/telebot.v3"
 
-	"github.com/jilyaluk/girabot/internal/gira"
+	"github.com/ilyaluk/girabot/internal/gira"
 )
 
 //go:embed webapp/index.html

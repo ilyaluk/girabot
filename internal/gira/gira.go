@@ -13,7 +13,7 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 
-	"github.com/jilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/giraauth"
 )
 
 var (

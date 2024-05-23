@@ -5,7 +5,7 @@
 ## Install
 
 ```sh
-go install github.com/jilyaluk/girabot@latest
+go install github.com/ilyaluk/girabot@latest
 export TOKEN=<your telegram bot token>
 girabot -h
 ```
