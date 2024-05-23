@@ -484,7 +484,7 @@ func (s *server) refreshTokensWatcher() {
 				if err != nil {
 					log.Printf("error refreshing token for %d: %v", tok.ID, err)
 
-					s.bot.OnError(fmt.Errorf("failed token refresh for %d: %v", tok.ID, err), nil)
+					s.bot.OnError(fmt.Errorf("failed token refresh for %d: %v (token was removed)", tok.ID, err), nil)
 					s.db.Delete(&tok)
 
 					s.db.Model(&User{}).Where("id = ?", tok.ID).Update("state", 0)
