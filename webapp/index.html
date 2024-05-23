@@ -113,9 +113,14 @@
                         lastSelectedStation.number +
                         "&" +
                         Telegram.WebApp.initData,
-                ).then(() => {
-                    Telegram.WebApp.close();
-                });
+                )
+                    .then(() => {
+                        Telegram.WebApp.close();
+                    })
+                    .catch((e) => {
+                        alert("Internal error.\nPlease check 'ℹ️ Status'.");
+                        Telegram.WebApp.close();
+                    });
             });
 
             function getStationMarker(station, isCurrent) {
@@ -238,7 +243,6 @@
                 });
             }
 
-            // TODO: onError
             fetch("api/stations?" + Telegram.WebApp.initData)
                 .then((r) => r.json())
                 .then((data) => {
@@ -249,6 +253,12 @@
                     for (let [idx, station] of data.entries()) {
                         addStation(station);
                     }
+                })
+                .catch((e) => {
+                    alert(
+                        "Internal error.\nPlease check 'ℹ️ Status',\nor log in, if you haven't.",
+                    );
+                    Telegram.WebApp.close();
                 });
 
             map.on("locationfound", (e) => {
