@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/mail"
 	"slices"
 	"strconv"
 	"strings"
@@ -46,7 +47,16 @@ func (c *customContext) handleText() error {
 	case UserStateNone:
 		return c.handleStart()
 	case UserStateWaitingForEmail:
-		c.user.Email = c.Text()
+		email := c.Text()
+		emailParsed, err := mail.ParseAddress(email)
+		if err != nil || emailParsed.Address != email {
+			if err := c.Send("This does not look like valid email, please try again."); err != nil {
+				return err
+			}
+			return c.deleteMessage(c.Message().ID)
+		}
+
+		c.user.Email = email
 		c.user.EmailMessageID = c.Message().ID
 
 		if err := c.Send(messagePassword); err != nil {
@@ -62,22 +72,36 @@ func (c *customContext) handleText() error {
 		}
 
 		tok, err := c.s.auth.Login(c.ctx, c.user.Email, pwd)
+		if errors.Is(err, giraauth.ErrInvalidEmail) {
+			if _, err := c.Bot().Edit(m, "Invalid email, please start over."); err != nil {
+				return err
+			}
+
+			if err := c.deleteMessage(c.user.EmailMessageID); err != nil {
+				return err
+			}
+			if err := c.Delete(); err != nil {
+				return err
+			}
+
+			return c.handleLogin()
+		}
+
 		if errors.Is(err, giraauth.ErrInvalidCredentials) {
-			_, err := c.Bot().Edit(
-				m,
+			if _, err := c.Bot().Edit(m,
 				"Invalid credentials, please try different password.\n"+
-					"To change email, use /login.",
-			)
-			return err
+					"To change email, run /login.",
+			); err != nil {
+				return err
+			}
+
+			return c.Delete()
 		}
 		if err != nil {
 			return err
 		}
 
-		if err := c.Bot().Delete(tele.StoredMessage{
-			ChatID:    c.user.ID,
-			MessageID: strconv.Itoa(c.user.EmailMessageID),
-		}); err != nil {
+		if err := c.deleteMessage(c.user.EmailMessageID); err != nil {
 			return err
 		}
 		if err := c.Delete(); err != nil {
@@ -136,6 +160,13 @@ func (c *customContext) handleText() error {
 	default:
 		return c.Send("Unknown state")
 	}
+}
+
+func (c *customContext) deleteMessage(id int) error {
+	return c.Bot().Delete(tele.StoredMessage{
+		ChatID:    c.user.ID,
+		MessageID: strconv.Itoa(id),
+	})
 }
 
 func (s *server) checkLoggedIn(next tele.HandlerFunc) tele.HandlerFunc {

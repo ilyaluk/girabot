@@ -77,6 +77,7 @@ func convertTokens(ts tokens) (*oauth2.Token, error) {
 }
 
 var (
+	ErrInvalidEmail        = fmt.Errorf("giraauth: invalid email")
 	ErrInvalidCredentials  = fmt.Errorf("giraauth: invalid credentials")
 	ErrInvalidRefreshToken = fmt.Errorf("giraauth: invalid refresh token")
 )
@@ -112,6 +113,10 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 
 	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "Invalid refresh token") {
 		return ErrInvalidRefreshToken
+	}
+
+	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "The field Email must") {
+		return ErrInvalidEmail
 	}
 
 	if resp.StatusCode != http.StatusOK {

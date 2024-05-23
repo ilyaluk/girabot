@@ -22,7 +22,7 @@ const messageLogin = `
 Now, you need to log in. For that, I'll need your email and password for Gira app.
 That sounds scary, but I won't save your credentials, pinky promise.
 I'll only use them to log in to Gira API and fetch the access token, which I will store and use to access Gira API on your behalf.
-Email and password will not be stored in my database, and I'll forget them as soon as I log in.
+Password will not be stored in my database, and I'll forget email and password right after login.
 
 Please send me your email.
 `
