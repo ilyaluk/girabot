@@ -509,7 +509,26 @@ func (c *customContext) handleStation() error {
 	serialStr, cb2, _ := strings.Cut(cb.Data, "|")
 	serial := gira.StationSerial(serialStr)
 
-	// TODO: check that station is still active, it might become inactive after refresh
+	if cb2 == "delete_msg" {
+		// refresh stations cache
+		_, err := c.gira.GetStations(c.ctx)
+		if err != nil {
+			return err
+		}
+
+		station, err := c.gira.GetStationCached(c.ctx, serial)
+		if err != nil {
+			return err
+		}
+
+		if station.Status != gira.AssetStatusActive {
+			if err := c.Send("Sorry, station is not active anymore"); err != nil {
+				return err
+			}
+
+			return c.deleteCallbackMessage()
+		}
+	}
 
 	if err := c.handleStationInner(serial); err != nil {
 		return err
