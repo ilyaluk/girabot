@@ -388,10 +388,6 @@ func (c *customContext) sendStationList(stations []gira.Station, loc *tele.Locat
 			stationsDocks[i].ConventionalBikesAvailable(),
 			freeDocks,
 		)
-		if c.user.CurrentTripCode != "" && !c.user.CurrentTripRateAwaiting {
-			// if user has active trip, show only free docks to ease visibility
-			btnText = fmt.Sprintf("%s%s: %d 🆓", fav, s.Number(), freeDocks)
-		}
 
 		rm.InlineKeyboard = append(rm.InlineKeyboard, []tele.InlineButton{
 			{
