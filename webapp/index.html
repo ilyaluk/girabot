@@ -85,6 +85,9 @@
         <div class="loading style-2"><div class="loading-wheel"></div></div>
         <script>
             Telegram.WebApp.expand();
+            if (Telegram.WebApp.isVerticalSwipesEnabled) {
+                Telegram.WebApp.disableVerticalSwipes();
+            }
 
             const bounds = L.latLngBounds([
                 [38.624926, -9.306846],
