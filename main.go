@@ -375,7 +375,7 @@ func (s *server) onError(err error, c tele.Context) {
 			cc, cancel := s.newCustomContext(c, &u)
 			defer cancel()
 
-			trips, err := cc.gira.GetTripHistory(cc.ctx, 1, 1)
+			trips, err := cc.gira.GetTripHistory(cc, 1, 1)
 			if err == nil && len(trips) == 1 {
 				t := trips[0].EndDate
 				delta := time.Now().Sub(t).Truncate(time.Second)
@@ -611,4 +611,20 @@ func allowlist(chats ...int64) tele.MiddlewareFunc {
 			},
 		})(next)
 	}
+}
+
+func (c *customContext) Deadline() (deadline time.Time, ok bool) {
+	return c.ctx.Deadline()
+}
+
+func (c *customContext) Done() <-chan struct{} {
+	return c.ctx.Done()
+}
+
+func (c *customContext) Err() error {
+	return c.ctx.Err()
+}
+
+func (c *customContext) Value(key any) any {
+	return c.ctx.Value(key)
 }

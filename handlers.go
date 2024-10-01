@@ -71,7 +71,7 @@ func (c *customContext) handleText() error {
 			return err
 		}
 
-		tok, err := c.s.auth.Login(c.ctx, c.user.Email, pwd)
+		tok, err := c.s.auth.Login(c, c.user.Email, pwd)
 		if errors.Is(err, giraauth.ErrInvalidEmail) {
 			if _, err := c.Bot().Edit(m, "Invalid email, please start over."); err != nil {
 				return err
@@ -205,7 +205,7 @@ func (c *customContext) handleStatus() error {
 	}
 	defer cleanup()
 
-	info, err := c.gira.GetClientInfo(c.ctx)
+	info, err := c.gira.GetClientInfo(c)
 	if err != nil {
 		return err
 	}
@@ -311,7 +311,7 @@ func (c *customContext) sendNearbyStations(loc *tele.Location) error {
 	}
 	defer cleanup()
 
-	ss, err := c.gira.GetStations(c.ctx)
+	ss, err := c.gira.GetStations(c)
 	if err != nil {
 		return err
 	}
@@ -377,7 +377,7 @@ func (c *customContext) sendStationList(stations []gira.Station, loc *tele.Locat
 	for i, s := range stations {
 		go func(i int, s gira.StationSerial) {
 			defer wg.Done()
-			docks, err := c.gira.GetStationDocks(c.ctx, s)
+			docks, err := c.gira.GetStationDocks(c, s)
 			if err != nil {
 				return
 			}
@@ -466,7 +466,7 @@ func (c *customContext) handleLoggedInText() error {
 
 	// if got number, first try to treat it as station number:
 	if _, err := strconv.Atoi(txt); err == nil {
-		stations, err := c.gira.GetStations(c.ctx)
+		stations, err := c.gira.GetStations(c)
 		if err != nil {
 			return err
 		}
@@ -511,12 +511,12 @@ func (c *customContext) handleStation() error {
 
 	if cb2 == "delete_msg" {
 		// refresh stations cache
-		_, err := c.gira.GetStations(c.ctx)
+		_, err := c.gira.GetStations(c)
 		if err != nil {
 			return err
 		}
 
-		station, err := c.gira.GetStationCached(c.ctx, serial)
+		station, err := c.gira.GetStationCached(c, serial)
 		if err != nil {
 			return err
 		}
@@ -549,13 +549,13 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 	defer cleanup()
 
 	// we can call cached version, because we retrieved fresh station list prior while listing stations
-	station, err := c.gira.GetStationCached(c.ctx, serial)
+	station, err := c.gira.GetStationCached(c, serial)
 	if err != nil {
 		return err
 	}
 
 	// but docks are always retrieved fresh
-	docks, err := c.gira.GetStationDocks(c.ctx, serial)
+	docks, err := c.gira.GetStationDocks(c, serial)
 	if err != nil {
 		return err
 	}
@@ -676,14 +676,14 @@ func (c *customContext) handleUnlockBike() error {
 		return err
 	}
 
-	ok, err := c.gira.ReserveBike(c.ctx, bike.Serial)
+	ok, err := c.gira.ReserveBike(c, bike.Serial)
 
 	if errors.Is(err, gira.ErrBikeAlreadyReserved) {
 		log.Printf("[uid:%d] bike already reserved, trying to cancel: %+v", c.user.ID, bike)
 		// at least try to cancel the reservation, ignore errors
-		if cancelled, _ := c.gira.CancelBikeReserve(c.ctx); cancelled {
+		if cancelled, _ := c.gira.CancelBikeReserve(c); cancelled {
 			// then, retry to reserve again
-			ok, err = c.gira.ReserveBike(c.ctx, bike.Serial)
+			ok, err = c.gira.ReserveBike(c, bike.Serial)
 		}
 	}
 
@@ -696,7 +696,7 @@ func (c *customContext) handleUnlockBike() error {
 		return c.Edit("Bike can't be reserved, try again?")
 	}
 
-	ok, err = c.gira.StartTrip(c.ctx)
+	ok, err = c.gira.StartTrip(c)
 	if err != nil {
 		return err
 	}
@@ -948,7 +948,7 @@ func (c *customContext) handlePayPoints() error {
 		return c.Send("No trip code")
 	}
 
-	paid, err := c.gira.PayTripWithPoints(c.ctx, tc)
+	paid, err := c.gira.PayTripWithPoints(c, tc)
 	if err != nil {
 		return err
 	}
@@ -973,7 +973,7 @@ func (c *customContext) handlePayMoney() error {
 		return c.Send("No trip code")
 	}
 
-	paid, err := c.gira.PayTripWithMoney(c.ctx, tc)
+	paid, err := c.gira.PayTripWithMoney(c, tc)
 	if err != nil {
 		return err
 	}
@@ -1105,7 +1105,7 @@ func (c *customContext) handleRateSubmit() error {
 	}
 	defer cleanup()
 
-	ok, err := c.gira.RateTrip(c.ctx, c.user.CurrentTripCode, c.user.CurrentTripRating)
+	ok, err := c.gira.RateTrip(c, c.user.CurrentTripCode, c.user.CurrentTripRating)
 	if err != nil {
 		return err
 	}
@@ -1243,7 +1243,7 @@ func (c *customContext) handleShowFavorites() error {
 
 	var stations []gira.Station
 	for serial := range c.user.Favorites {
-		s, err := c.gira.GetStationCached(c.ctx, serial)
+		s, err := c.gira.GetStationCached(c, serial)
 		if err != nil {
 			return err
 		}
@@ -1317,44 +1317,44 @@ func (c *customContext) runDebug(text string) error {
 			return tok.AccessToken, nil
 		},
 		"client": func() (any, error) {
-			return c.gira.GetClientInfo(c.ctx)
+			return c.gira.GetClientInfo(c)
 		},
 		"stations": func() (any, error) {
-			return c.gira.GetStations(c.ctx)
+			return c.gira.GetStations(c)
 		},
 		"station": func() (any, error) {
 			if len(args) == 1 {
 				return "missing station serial", nil
 			}
-			return c.gira.GetStationDocks(c.ctx, gira.StationSerial(args[1]))
+			return c.gira.GetStationDocks(c, gira.StationSerial(args[1]))
 		},
 		"stationByNumber": func() (any, error) {
 			if len(args) == 1 {
 				return "missing station number", nil
 			}
-			ss, err := c.gira.GetStations(c.ctx)
+			ss, err := c.gira.GetStations(c)
 			if err != nil {
 				return nil, err
 			}
 			for _, s := range ss {
 				if s.Number() == args[1] {
-					docks, err := c.gira.GetStationDocks(c.ctx, s.Serial)
+					docks, err := c.gira.GetStationDocks(c, s.Serial)
 					return map[string]any{
 						"station": s,
 						"docks":   docks,
 					}, err
 				}
 			}
-			return c.gira.GetStationDocks(c.ctx, gira.StationSerial(args[1]))
+			return c.gira.GetStationDocks(c, gira.StationSerial(args[1]))
 		},
 		"activeTrip": func() (any, error) {
-			return c.gira.GetActiveTrip(c.ctx)
+			return c.gira.GetActiveTrip(c)
 		},
 		"trip": func() (any, error) {
 			if len(args) == 1 {
 				return "missing trip code", nil
 			}
-			return c.gira.GetTrip(c.ctx, gira.TripCode(args[1]))
+			return c.gira.GetTrip(c, gira.TripCode(args[1]))
 		},
 		"tripHistory": func() (any, error) {
 			if len(args) < 3 {
@@ -1362,7 +1362,7 @@ func (c *customContext) runDebug(text string) error {
 			}
 			page, _ := strconv.Atoi(args[1])
 			pageSize, _ := strconv.Atoi(args[2])
-			return c.gira.GetTripHistory(c.ctx, page, pageSize)
+			return c.gira.GetTripHistory(c, page, pageSize)
 		},
 		"unratedTrips": func() (any, error) {
 			if len(args) < 3 {
@@ -1370,19 +1370,19 @@ func (c *customContext) runDebug(text string) error {
 			}
 			page, _ := strconv.Atoi(args[1])
 			pageSize, _ := strconv.Atoi(args[2])
-			return c.gira.GetUnratedTrips(c.ctx, page, pageSize)
+			return c.gira.GetUnratedTrips(c, page, pageSize)
 		},
 		"doReserve": func() (any, error) {
 			if len(args) == 1 {
 				return "missing bike serial", nil
 			}
-			return c.gira.ReserveBike(c.ctx, gira.BikeSerial(args[1]))
+			return c.gira.ReserveBike(c, gira.BikeSerial(args[1]))
 		},
 		"doCancel": func() (any, error) {
-			return c.gira.CancelBikeReserve(c.ctx)
+			return c.gira.CancelBikeReserve(c)
 		},
 		"doStart": func() (any, error) {
-			return c.gira.StartTrip(c.ctx)
+			return c.gira.StartTrip(c)
 		},
 		"doRateTrip": func() (any, error) {
 			args := strings.SplitN(text, " ", 3)
@@ -1394,19 +1394,19 @@ func (c *customContext) runDebug(text string) error {
 				Rating:  rating,
 				Comment: args[3],
 			}
-			return c.gira.RateTrip(c.ctx, gira.TripCode(args[1]), req)
+			return c.gira.RateTrip(c, gira.TripCode(args[1]), req)
 		},
 		"doPayPoints": func() (any, error) {
 			if len(args) == 1 {
 				return "missing trip code", nil
 			}
-			return c.gira.PayTripWithPoints(c.ctx, gira.TripCode(args[1]))
+			return c.gira.PayTripWithPoints(c, gira.TripCode(args[1]))
 		},
 		"doPayMoney": func() (any, error) {
 			if len(args) == 1 {
 				return "missing trip code", nil
 			}
-			return c.gira.PayTripWithMoney(c.ctx, gira.TripCode(args[1]))
+			return c.gira.PayTripWithMoney(c, gira.TripCode(args[1]))
 		},
 		"wsServerTime": func() (any, error) {
 			if len(args) == 1 {
