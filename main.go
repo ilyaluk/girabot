@@ -340,7 +340,7 @@ func (s *server) onError(err error, c tele.Context) {
 		s.db.First(&u, c.Chat().ID)
 	}
 
-	username := u.TGUsername
+	username := strings.ReplaceAll(u.TGUsername, "_", "\\_")
 	if username == "" {
 		username = "?"
 		if u.ID != 0 {
@@ -416,7 +416,7 @@ func (s *server) onError(err error, c tele.Context) {
 		}
 	}
 
-	msg := fmt.Sprintf("recovered error from @%v (%v): `%+v`", username, getAction(c, u), err)
+	msg := fmt.Sprintf("recovered error from @%v (`%v`): `%+v`", username, getAction(c, u), err)
 	log.Println("bot:", msg)
 	if _, err := s.bot.Send(tele.ChatID(*adminID), msg, tele.ModeMarkdown); err != nil {
 		log.Println("bot: error sending recovered error:", err)
