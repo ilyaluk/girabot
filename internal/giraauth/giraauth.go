@@ -77,6 +77,7 @@ func convertTokens(ts tokens) (*oauth2.Token, error) {
 }
 
 var (
+	ErrInternalServer      = fmt.Errorf("giraauth: internal server error")
 	ErrInvalidEmail        = fmt.Errorf("giraauth: invalid email")
 	ErrInvalidCredentials  = fmt.Errorf("giraauth: invalid credentials")
 	ErrInvalidRefreshToken = fmt.Errorf("giraauth: invalid refresh token")
@@ -109,6 +110,10 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("giraauth: reading body: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusInternalServerError {
+		return ErrInternalServer
 	}
 
 	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "Invalid refresh token") {

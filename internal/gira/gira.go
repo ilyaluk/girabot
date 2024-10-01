@@ -366,14 +366,14 @@ func wrapError(err error) error {
 	if errors.As(err, &errs) && len(errs) == 1 {
 		msg := errs[0].Message
 
-		// sigh
-		if strings.Contains(msg, giraauth.ErrInvalidRefreshToken.Error()) {
+		switch {
+		case strings.Contains(msg, giraauth.ErrInternalServer.Error()): // sigh, graphql lib breaks errors
+			return giraauth.ErrInternalServer
+		case strings.Contains(msg, giraauth.ErrInvalidRefreshToken.Error()):
 			return giraauth.ErrInvalidRefreshToken
-		}
-
-		// this happens when token is deleted from DB for some reason (maybe refresh failed)
-		// as graphql lib breaks any errors to strings, we have to check like this...
-		if strings.Contains(msg, "record not found") {
+		case strings.Contains(msg, "record not found"):
+			// this happens when token is deleted from DB for some reason (maybe refresh failed)
+			// as graphql lib breaks any errors to strings, we have to check like this...
 			return giraauth.ErrInvalidRefreshToken
 		}
 

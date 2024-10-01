@@ -353,6 +353,9 @@ func (s *server) onError(err error, c tele.Context) {
 		var prettyErr string
 
 		switch {
+		case errors.Is(err, giraauth.ErrInternalServer):
+			prettyErr = "Gira Auth API returned internal server error. Please try again."
+
 		case errors.Is(err, giraauth.ErrInvalidRefreshToken):
 			prettyErr = "Gira Auth API says that your token is invalid. Please re-login via /login."
 
