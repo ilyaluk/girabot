@@ -26,6 +26,7 @@ var (
 	ErrHasNoActiveSubscriptions = fmt.Errorf("gira: has no active subscriptions")
 	ErrNoServiceStatusFound     = fmt.Errorf("gira: no service status found")
 	ErrBikeAlreadyInTrip        = fmt.Errorf("gira: bike already in trip")
+	ErrTMLCommunication         = fmt.Errorf("gira: TML communication error")
 )
 
 type Client struct {
@@ -399,6 +400,8 @@ func convertTripError(msg string) error {
 		return ErrNoServiceStatusFound
 	case strings.Contains(msg, "bike_already_in_trip"):
 		return ErrBikeAlreadyInTrip
+	case strings.Contains(msg, "navigator_error_tml_comunication"): // yes, it's spelled like this
+		return ErrTMLCommunication
 	}
 	return nil
 }

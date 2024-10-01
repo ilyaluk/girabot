@@ -399,6 +399,11 @@ func (s *server) onError(err error, c tele.Context) {
 
 		case errors.Is(err, gira.ErrBikeAlreadyInTrip):
 			prettyErr = "The bike is already in a trip. Try another one."
+
+		case errors.Is(err, gira.ErrTMLCommunication):
+			prettyErr = "Gira has issues communicating with TML/Navegante. " +
+				"Probably it can't check your monthly ticket validity. " +
+				"Try again later, or buy Gira yearly pass. 🤷"
 		}
 
 		if prettyErr != "" {
