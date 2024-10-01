@@ -852,7 +852,7 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 				"🚲 Bike %s\n"+
 				"🕑 Duration ≥%s\n"+
 				"%s"+
-				"\n🛟 To get Gira support, call +351 211 163 060 (press 2 for operator).",
+				"\n🛟 To get Gira support, call +351 211 163 125.",
 			trip.Bike,
 			trip.PrettyDuration(),
 			costStr,
