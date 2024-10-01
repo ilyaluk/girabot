@@ -1499,7 +1499,7 @@ func (c *customContext) runDebug(text string) error {
 			for _, idStr := range ids {
 				id, _ := strconv.Atoi(idStr)
 				if _, err := c.Bot().Send(tele.ChatID(id), msg, tele.NoPreview, tele.ModeMarkdown); err != nil {
-					return nil, err
+					return nil, fmt.Errorf("broadcast to %d: %w", id, err)
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
