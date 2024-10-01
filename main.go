@@ -386,7 +386,17 @@ func (s *server) onError(err error, c tele.Context) {
 				if delta < time.Hour {
 					prettyErr = fmt.Sprintf("You can't start a new trip so soon. Last trip ended %v ago.\n", delta)
 					if delta < 5*time.Minute {
-						prettyErr += fmt.Sprintf("Please wait %v and try again.", 5*time.Minute-delta)
+						// to avoid weird rounding errors, add 1 second
+						wait := 5*time.Minute - delta + time.Second
+						prettyErr += fmt.Sprintf("Please wait %v and try again.\n\nI'll notify you once this passes!", wait)
+						time.AfterFunc(wait, func() {
+							cc, cancel := s.newCustomContext(c, &u)
+							defer cancel()
+
+							if err := cc.Send("You can start a trip now. Enjoy your ride! 🚲"); err != nil {
+								log.Println("bot: error sending trip interval message:", err)
+							}
+						})
 					} else {
 						prettyErr += "Weird, you should be able to start a new trip after 5 minutes. Try again later. 🤷🏼"
 					}
