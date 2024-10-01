@@ -409,7 +409,7 @@ func (c *customContext) sendStationList(stations []gira.Station, loc *tele.Locat
 		))
 
 		// apparently, these values are not always the same
-		freeDocks := min(stationsDocks[i].FreeDocks(), s.Docks-s.Bikes)
+		freeDocks := min(stationsDocks[i].Free(), s.Docks-s.Bikes)
 
 		btnText := fmt.Sprintf(
 			"%s%s: %2d ⚡️ %2d ⚙️ %d 🆓",
@@ -560,6 +560,8 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 		return err
 	}
 
+	freeDocks := docks.Free()
+
 	// filter out docks with no bike or not active
 	docks = slices.DeleteFunc(docks, func(d gira.Dock) bool {
 		return d.Bike == nil || d.Status != gira.AssetStatusActive
@@ -607,6 +609,10 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 			Text:   "🔄 Refresh",
 			Unique: btnKeyTypeStation,
 			Data:   string(serial) + "|delete_msg",
+		},
+		{
+			Text:   fmt.Sprintf("🆓 %d docks", freeDocks),
+			Unique: btnKeyTypeIgnore,
 		},
 		{
 			Text:   "❎ Close",

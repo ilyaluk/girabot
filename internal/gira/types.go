@@ -240,7 +240,7 @@ func (ds Docks) ConventionalBikesAvailable() int {
 	return res
 }
 
-func (ds Docks) FreeDocks() int {
+func (ds Docks) Free() int {
 	var res int
 	for _, d := range ds {
 		if d.Bike == nil && d.Status == AssetStatusActive && d.LedStatus == "green" && d.LockStatus == "unlocked" {
