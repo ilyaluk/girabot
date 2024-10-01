@@ -1496,12 +1496,16 @@ func (c *customContext) runDebug(text string) error {
 			}
 			ids := strings.Split(args[1], ",")
 			msg := args[2]
+			var errs []error
 			for _, idStr := range ids {
 				id, _ := strconv.Atoi(idStr)
 				if _, err := c.Bot().Send(tele.ChatID(id), msg, tele.NoPreview, tele.ModeMarkdown); err != nil {
-					return nil, fmt.Errorf("broadcast to %d: %w", id, err)
+					errs = append(errs, fmt.Errorf("id %d: %w", id, err))
 				}
 				time.Sleep(100 * time.Millisecond)
+			}
+			if len(errs) > 0 {
+				return "", fmt.Errorf("failed sending to some users: %v", errs)
 			}
 			return "ok", nil
 		},
