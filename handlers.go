@@ -1498,7 +1498,7 @@ func (c *customContext) runDebug(text string) error {
 			msg := args[2]
 			for _, idStr := range ids {
 				id, _ := strconv.Atoi(idStr)
-				if _, err := c.Bot().Send(tele.ChatID(id), msg, tele.ModeMarkdown); err != nil {
+				if _, err := c.Bot().Send(tele.ChatID(id), msg, tele.NoPreview, tele.ModeMarkdown); err != nil {
 					return nil, err
 				}
 				time.Sleep(100 * time.Millisecond)
