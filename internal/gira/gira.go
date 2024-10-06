@@ -23,6 +23,7 @@ var (
 
 	ErrAlreadyHasActiveTrip     = fmt.Errorf("gira: already has active trip")
 	ErrBikeAlreadyReserved      = fmt.Errorf("gira: bike already reserved")
+	ErrBikeInRepair             = fmt.Errorf("gira: bike in repair")
 	ErrNotEnoughBalance         = fmt.Errorf("gira: not enough balance")
 	ErrTripIntervalLimit        = fmt.Errorf("gira: trip interval limit")
 	ErrHasNoActiveSubscriptions = fmt.Errorf("gira: has no active subscriptions")
@@ -393,6 +394,8 @@ func convertTripError(msg string) error {
 		return ErrAlreadyHasActiveTrip
 	case strings.Contains(msg, "bike_already_reserved"):
 		return ErrBikeAlreadyReserved
+	case strings.Contains(msg, "bike_in_repair"):
+		return ErrBikeInRepair
 	case strings.Contains(msg, "not_enough_balance"):
 		return ErrNotEnoughBalance
 	case strings.Contains(msg, "trip_interval_limit"):

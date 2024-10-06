@@ -338,6 +338,16 @@ func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, cont
 	}, cancel
 }
 
+var lisbonTZ *time.Location
+
+func init() {
+	loc, err := time.LoadLocation("Europe/Lisbon")
+	if err != nil {
+		log.Fatal(err)
+	}
+	lisbonTZ = loc
+}
+
 func (s *server) onError(err error, c tele.Context) {
 	var u User
 	if c != nil && c.Chat() != nil {
@@ -362,7 +372,8 @@ func (s *server) onError(err error, c tele.Context) {
 		switch {
 		case errors.Is(err, tele.ErrMessageNotModified),
 			errors.Is(err, tele.ErrSameMessageContent),
-			errors.Is(err, tele.ErrNotFoundToDelete):
+			errors.Is(err, tele.ErrNotFoundToDelete),
+			strings.Contains(err.Error(), "message can't be deleted for everyone"):
 			log.Println("bot: ignoring telegram message error, this happens sometimes")
 			return
 
@@ -373,6 +384,10 @@ func (s *server) onError(err error, c tele.Context) {
 				log.Println("bot: error sending recovered error:", err)
 			}
 
+			return
+
+		case errors.Is(err, tele.ErrMessageNotModified), errors.Is(err, tele.ErrSameMessageContent):
+			log.Println("bot: ignoring message not modified error")
 			return
 
 		case errors.Is(err, giraauth.ErrInternalServer):
@@ -388,6 +403,9 @@ func (s *server) onError(err error, c tele.Context) {
 		case errors.Is(err, gira.ErrBikeAlreadyReserved):
 			prettyErr = "Gira says that the bike is already reserved. This is probably their bug. " +
 				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
+
+		case errors.Is(err, gira.ErrBikeInRepair):
+			prettyErr = "Gira says that the bike is in repair. Try other one."
 
 		case errors.Is(err, gira.ErrNotEnoughBalance):
 			prettyErr = "You have negative balance and can't unlock the bike. " +
@@ -462,6 +480,14 @@ func (s *server) onError(err error, c tele.Context) {
 			}
 
 			prettyErr = "There's currently no tokens to circumvent Gira API limits. Please try again in a couple of minutes."
+
+		case errors.Is(err, gira.ErrServiceUnavailable):
+			hr := time.Now().In(lisbonTZ).Hour()
+			if hr >= 2 && hr < 6 {
+				prettyErr = "Gira is not available at night (2-6 AM)."
+			} else {
+				prettyErr = "Gira service is unavailable. Try again later."
+			}
 		}
 
 		if prettyErr != "" {
