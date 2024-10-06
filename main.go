@@ -353,6 +353,10 @@ func (s *server) onError(err error, c tele.Context) {
 		var prettyErr string
 
 		switch {
+		case errors.Is(err, tele.ErrMessageNotModified), errors.Is(err, tele.ErrSameMessageContent):
+			log.Println("bot: ignoring message not modified error")
+			return
+
 		case errors.Is(err, giraauth.ErrInternalServer):
 			prettyErr = "Gira Auth API returned internal server error. Please try again."
 
@@ -417,6 +421,15 @@ func (s *server) onError(err error, c tele.Context) {
 			prettyErr = "Gira has issues communicating with TML/Navegante. " +
 				"Probably it can't check your monthly ticket validity. " +
 				"Try again later, or buy Gira yearly pass. 🤷"
+
+		case errors.Is(err, gira.ErrServiceUnavailable):
+			loc, _ := time.LoadLocation("Europe/Lisbon")
+			hr := time.Now().In(loc).Hour()
+			if hr >= 2 && hr < 6 {
+				prettyErr = "Gira is not available at night (2-6 AM)."
+			} else {
+				prettyErr = "Gira service is unavailable. Try again later."
+			}
 		}
 
 		if prettyErr != "" {
