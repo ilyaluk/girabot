@@ -353,8 +353,10 @@ func (s *server) onError(err error, c tele.Context) {
 		var prettyErr string
 
 		switch {
-		case errors.Is(err, tele.ErrMessageNotModified), errors.Is(err, tele.ErrSameMessageContent):
-			log.Println("bot: ignoring message not modified error")
+		case errors.Is(err, tele.ErrMessageNotModified),
+			errors.Is(err, tele.ErrSameMessageContent),
+			errors.Is(err, tele.ErrNotFoundToDelete):
+			log.Println("bot: ignoring telegram message error, this happens sometimes")
 			return
 
 		case errors.Is(err, giraauth.ErrInternalServer):
