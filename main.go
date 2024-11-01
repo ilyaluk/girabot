@@ -21,6 +21,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/gira"
 	"github.com/ilyaluk/girabot/internal/giraauth"
 )
@@ -323,7 +324,9 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-	girac := gira.New(oauth2.NewClient(ctx, s.getTokenSource(u.ID)))
+	oauthC := oauth2.NewClient(ctx, s.getTokenSource(u.ID))
+	fbC := firebasetoken.NewClient(oauthC.Transport)
+	girac := gira.New(fbC)
 
 	return &customContext{
 		Context: c,

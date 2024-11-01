@@ -47,7 +47,7 @@ func New(httpc *http.Client) *Client {
 	httpc.Transport = t
 
 	return &Client{
-		c: graphql.NewClient("https://apigira.emel.pt/graphql", httpc),
+		c: graphql.NewClient("https://egira-proxy-arqetk5clq-ew.a.run.app/api/graphql", httpc),
 	}
 }
 

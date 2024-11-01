@@ -9,6 +9,7 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 	"github.com/hasura/go-graphql-client/pkg/jsonutil"
+	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/oauth2"
@@ -203,8 +204,18 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 }
 
 func startOneSubscription(ctx context.Context, query any, token string, handler func([]byte, error) error) error {
+	fbToken, err := firebasetoken.Get(ctx)
+	if err != nil {
+		return err
+	}
+
 	subConnectsCnt.Inc()
-	c := graphql.NewSubscriptionClient("wss://apigira.emel.pt/graphql")
+	c := graphql.NewSubscriptionClient("wss://egira-proxy-arqetk5clq-ew.a.run.app/ws/graphql").
+		WithConnectionParams(map[string]any{
+			"headers": map[string]string{
+				"x-firebase-token": fbToken,
+			},
+		})
 
 	if _, err := c.Subscribe(query, map[string]any{"token": token}, handler); err != nil {
 		log.Println("subscription create error:", err)

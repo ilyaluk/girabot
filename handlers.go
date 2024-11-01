@@ -21,6 +21,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 	"gorm.io/gorm/clause"
 
+	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/gira"
 	"github.com/ilyaluk/girabot/internal/giraauth"
 )
@@ -1321,6 +1322,12 @@ func (c *customContext) runDebug(text string) error {
 				return nil, err
 			}
 			return tok.AccessToken, nil
+		},
+		"fbToken": func() (any, error) {
+			return firebasetoken.Get(c)
+		},
+		"fbTokenFetch": func() (any, error) {
+			return firebasetoken.Fetch(c)
 		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c)
