@@ -2,6 +2,10 @@
 
 > An alternative client for Lisbon's Gira bike sharing service.
 
+## Use
+
+Prod instance is running at [@BetterGiraBot](https://t.me/BetterGiraBot).
+
 ## Install
 
 ```sh
