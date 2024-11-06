@@ -28,6 +28,7 @@ var (
 	ErrBikeAlreadyInTrip        = fmt.Errorf("gira: bike already in trip")
 	ErrTMLCommunication         = fmt.Errorf("gira: TML communication error")
 	ErrServiceUnavailable       = fmt.Errorf("gira: service unavailable")
+	ErrForbidden                = fmt.Errorf("gira: forbidden")
 )
 
 type Client struct {
@@ -405,6 +406,8 @@ func convertTripError(msg string) error {
 		return ErrTMLCommunication
 	case strings.Contains(msg, "Serviço indisponível"):
 		return ErrServiceUnavailable
+	case strings.Contains(msg, "403 Forbidden"):
+		return ErrForbidden
 	}
 	return nil
 }

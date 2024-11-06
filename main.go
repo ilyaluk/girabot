@@ -432,6 +432,9 @@ func (s *server) onError(err error, c tele.Context) {
 			} else {
 				prettyErr = "Gira service is unavailable. Try again later."
 			}
+
+		case errors.Is(err, gira.ErrForbidden):
+			prettyErr = "EMEL have disabled access from this bot to their service, hence the bot is not working now, sorry. I'm trying to look for a solution."
 		}
 
 		if prettyErr != "" {
