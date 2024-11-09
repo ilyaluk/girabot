@@ -108,7 +108,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// req.Body is assumed to be closed by the base RoundTripper.
 	reqBodyClosed = true
-	return t.Base.RoundTrip(req2)
+
+	resp, err := t.Base.RoundTrip(req2)
+
+	if resp.StatusCode == 401 {
+		log.Printf("firebasetoken: got 401: '%s', token was '%s'", resp.Header.Get("www-authenticate"), token)
+	}
+
+	return resp, err
 }
 
 // cloneRequest returns a clone of the provided *http.Request.
