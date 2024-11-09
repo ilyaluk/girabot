@@ -351,6 +351,9 @@ func (s *server) onError(err error, c tele.Context) {
 		}
 	}
 
+	adminMsg := fmt.Sprintf("recovered error from @%v (`%v`): `%+v`", username, getAction(c, u), err)
+	log.Println("bot:", adminMsg)
+
 	if u.ID != 0 {
 		// handle some known errors
 		var prettyErr string
@@ -437,7 +440,11 @@ func (s *server) onError(err error, c tele.Context) {
 			}
 
 		case errors.Is(err, gira.ErrForbidden):
-			prettyErr = "EMEL have blocked access again, hence the bot is not working now, sorry. This would be fixed in the near future."
+			if _, err := s.bot.Send(tele.ChatID(*adminID), "forbidden: "+adminMsg, tele.ModeMarkdown); err != nil {
+				log.Println("bot: error sending recovered error:", err)
+			}
+
+			prettyErr = "There is some issues with bypassing the EMEL checks. We're working on it."
 		}
 
 		if prettyErr != "" {
@@ -450,9 +457,7 @@ func (s *server) onError(err error, c tele.Context) {
 		}
 	}
 
-	msg := fmt.Sprintf("recovered error from @%v (`%v`): `%+v`", username, getAction(c, u), err)
-	log.Println("bot:", msg)
-	if _, err := s.bot.Send(tele.ChatID(*adminID), msg, tele.ModeMarkdown); err != nil {
+	if _, err := s.bot.Send(tele.ChatID(*adminID), adminMsg, tele.ModeMarkdown); err != nil {
 		log.Println("bot: error sending recovered error:", err)
 	}
 
