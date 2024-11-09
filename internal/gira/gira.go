@@ -407,9 +407,9 @@ func convertTripError(msg string) error {
 	case strings.Contains(msg, "Serviço indisponível"):
 		return ErrServiceUnavailable
 	case strings.Contains(msg, "403 Forbidden"):
-		return ErrForbidden
+		return fmt.Errorf("%s: %w", msg, ErrForbidden)
 	case strings.Contains(msg, "401 Unauthorized"):
-		return ErrForbidden
+		return fmt.Errorf("%s: %w", msg, ErrForbidden)
 	}
 	return nil
 }
