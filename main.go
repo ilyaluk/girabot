@@ -437,7 +437,7 @@ func (s *server) onError(err error, c tele.Context) {
 			}
 
 		case errors.Is(err, gira.ErrForbidden):
-			prettyErr = "EMEL have disabled access from this bot to their service, hence the bot is not working now, sorry. I'm trying to look for a solution."
+			prettyErr = "EMEL have blocked access again, hence the bot is not working now, sorry. This might be should in the future."
 		}
 
 		if prettyErr != "" {

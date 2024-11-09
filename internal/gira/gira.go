@@ -408,6 +408,8 @@ func convertTripError(msg string) error {
 		return ErrServiceUnavailable
 	case strings.Contains(msg, "403 Forbidden"):
 		return ErrForbidden
+	case strings.Contains(msg, "401 Unauthorized"):
+		return ErrForbidden
 	}
 	return nil
 }
