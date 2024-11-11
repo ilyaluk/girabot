@@ -110,12 +110,15 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	reqBodyClosed = true
 
 	resp, err := t.Base.RoundTrip(req2)
+	if err != nil {
+		return resp, err
+	}
 
 	if resp.StatusCode == 401 {
 		log.Printf("firebasetoken: got 401: '%s', token was '%s'", resp.Header.Get("www-authenticate"), token)
 	}
 
-	return resp, err
+	return resp, nil
 }
 
 // cloneRequest returns a clone of the provided *http.Request.
