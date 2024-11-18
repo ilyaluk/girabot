@@ -10,7 +10,9 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +34,7 @@ var staticServer = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request)
 func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 	uid, err := s.validateTgUserId(r)
 	if err != nil {
+		log.Printf("web validateTgUserId: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -45,6 +48,7 @@ func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 
 	stations, err := girac.GetStations(r.Context())
 	if err != nil {
+		log.Printf("web GetStations: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -84,6 +88,7 @@ func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleWebSelectStation(w http.ResponseWriter, r *http.Request) {
 	_, err := s.validateTgUserId(r)
 	if err != nil {
+		log.Printf("web validateTgUserId: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -92,6 +97,7 @@ func (s *server) handleWebSelectStation(w http.ResponseWriter, r *http.Request) 
 	stationNum := q.Get("number")
 
 	if len(stationNum) > 4 {
+		log.Printf("web select station: bad station number: %q", stationNum)
 		// good enough validation
 		http.Error(w, "bad station number", http.StatusBadRequest)
 		return
@@ -152,19 +158,30 @@ func (s *server) validateTgUserId(r *http.Request) (int64, error) {
 
 	q := r.URL.Query()
 
-	dataCheckString := fmt.Sprintf(
-		"auth_date=%s\nquery_id=%s\nuser=%s",
-		q.Get("auth_date"), q.Get("query_id"), q.Get("user"))
-
-	h := hmac.New(sha256.New, hmacKey)
-	h.Write([]byte(dataCheckString))
-	expectedHash := h.Sum(nil)
-
 	gotHashHex := q.Get("hash")
 	gotHash, err := hex.DecodeString(gotHashHex)
 	if err != nil {
-		return 0, fmt.Errorf("bad hash")
+		return 0, fmt.Errorf("bad hash format")
 	}
+	q.Del("hash")
+
+	// Data-check-string is a chain of all received fields, sorted alphabetically,
+	// in the format key=<value> with a line feed character ('\n', 0x0A) used as separator
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var dataCheckParts []string
+	for _, k := range keys {
+		dataCheckParts = append(dataCheckParts, fmt.Sprintf("%s=%s", k, q.Get(k)))
+	}
+
+	dataCheckString := strings.Join(dataCheckParts, "\n")
+	h := hmac.New(sha256.New, hmacKey)
+	h.Write([]byte(dataCheckString))
+	expectedHash := h.Sum(nil)
 
 	if !hmac.Equal(expectedHash, gotHash) {
 		return 0, fmt.Errorf("bad hash")
