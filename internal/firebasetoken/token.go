@@ -46,6 +46,10 @@ func init() {
 }
 
 func isValidToken(token string) bool {
+	if token == "" {
+		return false
+	}
+
 	// Set leeway to -10 seconds to refresh token before it expires.
 	tok, err := jwt.Parse(token, keyFunc.Keyfunc, jwt.WithLeeway(-10*time.Second))
 	if err != nil {

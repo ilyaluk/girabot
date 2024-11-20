@@ -86,13 +86,6 @@ func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleWebSelectStation(w http.ResponseWriter, r *http.Request) {
-	_, err := s.validateTgUserId(r)
-	if err != nil {
-		log.Printf("web validateTgUserId: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	q := r.URL.Query()
 	stationNum := q.Get("number")
 
@@ -100,6 +93,17 @@ func (s *server) handleWebSelectStation(w http.ResponseWriter, r *http.Request) 
 		log.Printf("web select station: bad station number: %q", stationNum)
 		// good enough validation
 		http.Error(w, "bad station number", http.StatusBadRequest)
+		return
+	}
+
+	// we need to drop the number from the query, so that tg hash validation grabs only tg-specific params
+	q.Del("number")
+	r.URL.RawQuery = q.Encode()
+
+	_, err := s.validateTgUserId(r)
+	if err != nil {
+		log.Printf("web validateTgUserId: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
