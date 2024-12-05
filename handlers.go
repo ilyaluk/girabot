@@ -149,12 +149,14 @@ func (c *customContext) handleText() error {
 		if err := c.Delete(); err != nil {
 			return err
 		}
+
+		if err := c.Send("Thanks for the comment! Don't forget to submit the rating."); err != nil {
+			return err
+		}
+
 		_, err := c.Bot().Edit(
 			c.getRateMsg(),
-			fmt.Sprintf(
-				"Thanks for the comment! Don't forget to submit the rating.\n\n%s",
-				c.user.CurrentTripRating.Comment,
-			),
+			messageRateTrip,
 			getStarButtons(c.user.CurrentTripRating.Rating),
 		)
 		return err
@@ -874,7 +876,7 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 	if trip.Cost > 0 {
 		log.Printf("last trip was not free: %+v", trip)
 
-		costStr = fmt.Sprintf("🤑 Cost: %.0f€\n", trip.Cost)
+		costStr = fmt.Sprintf("\n🤑 Cost: %.0f€\n", trip.Cost)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -911,6 +913,8 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 		if !trip.CanUsePoints && !trip.CanPayWithMoney {
 			costStr += "\n⚠️ You can't pay for this trip with points or money, please use official app to top up and pay for it.\n" +
 				"Rating the trip now might trigger some Gira bug and make it free, try not to do that. Or do, I don't care, it's your account."
+		} else {
+			costStr += "\n🧾 Use buttons below to pay for the trip."
 		}
 	}
 
