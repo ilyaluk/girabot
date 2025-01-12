@@ -404,7 +404,7 @@ func convertTripError(msg string) error {
 		return ErrBikeAlreadyInTrip
 	case strings.Contains(msg, "navigator_error_tml_comunication"): // yes, it's spelled like this
 		return ErrTMLCommunication
-	case strings.Contains(msg, "Serviço indisponível"):
+	case strings.Contains(msg, "Serviço indisponível"), strings.Contains(msg, `Servi\u00E7o indispon\u00EDvel`):
 		return ErrServiceUnavailable
 	case strings.Contains(msg, "403 Forbidden"):
 		return ErrForbidden
