@@ -210,7 +210,7 @@ func startOneSubscription(ctx context.Context, query any, token string, handler 
 	}
 
 	subConnectsCnt.Inc()
-	c := graphql.NewSubscriptionClient("wss://egira-proxy-arqetk5clq-ew.a.run.app/ws/graphql").
+	c := graphql.NewSubscriptionClient("wss://c2g091p01.emel.pt/ws/graphql").
 		WithConnectionParams(map[string]any{
 			"headers": map[string]string{
 				"x-firebase-token": fbToken,

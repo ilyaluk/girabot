@@ -94,7 +94,7 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 		}
 	}
 
-	path := fmt.Sprintf("https://egira-proxy-arqetk5clq-ew.a.run.app/auth%s", api)
+	path := fmt.Sprintf("https://c2g091p01.emel.pt/auth%s", api)
 	req, err := http.NewRequestWithContext(ctx, method, path, bytes.NewBuffer(reqData))
 	if err != nil {
 		return fmt.Errorf("giraauth: creating request: %w", err)
