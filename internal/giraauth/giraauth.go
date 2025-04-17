@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"golang.org/x/oauth2"
 )
 
@@ -100,14 +99,8 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 		return fmt.Errorf("giraauth: creating request: %w", err)
 	}
 
-	fbToken, err := firebasetoken.Get(ctx)
-	if err != nil {
-		return fmt.Errorf("giraauth: getting firebase token: %w", err)
-	}
-
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Gira/3.4.0 (Android 34)")
-	req.Header.Set("x-firebase-token", fbToken)
+	req.Header.Set("User-Agent", "Gira/3.4.3 (Android 34)")
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {

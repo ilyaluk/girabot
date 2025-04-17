@@ -42,8 +42,9 @@ func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 	var user User
 	s.db.First(&user, uid)
 
-	oauthC := oauth2.NewClient(r.Context(), s.getTokenSource(uid))
-	fbC := firebasetoken.NewClient(oauthC.Transport)
+	ts := s.getTokenSource(uid)
+	oauthC := oauth2.NewClient(r.Context(), ts)
+	fbC := firebasetoken.NewClient(oauthC.Transport, ts)
 	girac := gira.New(fbC)
 
 	stations, err := girac.GetStations(r.Context())

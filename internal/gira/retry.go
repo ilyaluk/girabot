@@ -35,7 +35,7 @@ const (
 func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	requestsCnt.Inc()
 
-	req.Header.Set("User-Agent", "Gira/3.4.0 (Android 34)")
+	req.Header.Set("User-Agent", "Gira/3.4.3 (Android 34)")
 
 	// Clone the request body
 	var reqBytes []byte

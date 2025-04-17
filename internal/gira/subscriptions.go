@@ -204,7 +204,7 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 }
 
 func startOneSubscription(ctx context.Context, query any, token string, handler func([]byte, error) error) error {
-	fbToken, err := firebasetoken.Get(ctx)
+	fbToken, err := firebasetoken.Get(ctx, token)
 	if err != nil {
 		return err
 	}

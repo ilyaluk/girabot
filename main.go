@@ -324,8 +324,9 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-	oauthC := oauth2.NewClient(ctx, s.getTokenSource(u.ID))
-	fbC := firebasetoken.NewClient(oauthC.Transport)
+	ts := s.getTokenSource(u.ID)
+	oauthC := oauth2.NewClient(ctx, ts)
+	fbC := firebasetoken.NewClient(oauthC.Transport, ts)
 	girac := gira.New(fbC)
 
 	return &customContext{

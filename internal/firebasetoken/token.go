@@ -6,11 +6,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/oauth2"
 )
 
 var (
@@ -18,7 +20,16 @@ var (
 	cachedTokenMu sync.Mutex
 )
 
-func Get(ctx context.Context) (string, error) {
+func Get(ctx context.Context, authToken string) (string, error) {
+	raw, err := GetRaw(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return encrypt(raw, authToken)
+}
+
+func GetRaw(ctx context.Context) (string, error) {
 	cachedTokenMu.Lock()
 	defer cachedTokenMu.Unlock()
 
@@ -26,13 +37,15 @@ func Get(ctx context.Context) (string, error) {
 		return cachedToken, nil
 	}
 
-	tok, err := Fetch(ctx)
+	tok, err := FetchRaw(ctx)
 	if err != nil {
 		return "", err
 	}
-
 	cachedToken = tok
-	return tok, nil
+
+	// TODO: log error here if expired
+
+	return cachedToken, nil
 }
 
 var keyFunc keyfunc.Keyfunc
@@ -60,9 +73,10 @@ func isValidToken(token string) bool {
 	return tok.Valid
 }
 
+// TODO: this should be fixed
 const tokenURL = "https://gira.rodlabs.dev/firebase-token"
 
-func Fetch(ctx context.Context) (string, error) {
+func FetchRaw(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
 	if err != nil {
 		return "", err
@@ -88,6 +102,8 @@ func Fetch(ctx context.Context) (string, error) {
 
 type Transport struct {
 	Base http.RoundTripper
+
+	tokenSource oauth2.TokenSource
 }
 
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -102,7 +118,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}()
 	}
 
-	token, err := Get(req.Context())
+	tok, err := t.tokenSource.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := Get(req.Context(), tok.AccessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -134,13 +155,16 @@ func cloneRequest(r *http.Request) *http.Request {
 	// deep copy of the Header
 	r2.Header = make(http.Header, len(r.Header))
 	for k, s := range r.Header {
-		r2.Header[k] = append([]string(nil), s...)
+		r2.Header[k] = slices.Clone(s)
 	}
 	return r2
 }
 
-func NewClient(base http.RoundTripper) *http.Client {
+func NewClient(base http.RoundTripper, tokenSource oauth2.TokenSource) *http.Client {
 	return &http.Client{
-		Transport: &Transport{Base: base},
+		Transport: &Transport{
+			Base:        base,
+			tokenSource: tokenSource,
+		},
 	}
 }

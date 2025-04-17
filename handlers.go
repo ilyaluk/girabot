@@ -1328,10 +1328,18 @@ func (c *customContext) runDebug(text string) error {
 			return tok.AccessToken, nil
 		},
 		"fbToken": func() (any, error) {
-			return firebasetoken.Get(c)
+			return firebasetoken.GetRaw(c)
 		},
 		"fbTokenFetch": func() (any, error) {
-			return firebasetoken.Fetch(c)
+			return firebasetoken.FetchRaw(c)
+		},
+		"fbTokenEnc": func() (any, error) {
+			ts := c.getTokenSource()
+			tok, err := ts.Token()
+			if err != nil {
+				return nil, err
+			}
+			return firebasetoken.Get(c, tok.AccessToken)
 		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c)
