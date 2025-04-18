@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	dbPath = flag.String("db-path", "gira-tokens.db", "path to the SQLite database")
-	bind   = flag.String("bind", ":8080", "address to bind")
+	dbPath    = flag.String("db-path", "gira-tokens.db", "path to the SQLite database")
+	bind      = flag.String("bind", ":8080", "address to bind")
+	urlPrefix = flag.String("url-prefix", "/girabot_tokens", "URL prefix for the server")
 )
 
 func main() {
@@ -34,11 +35,12 @@ func main() {
 		auth: giraauth.New(http.DefaultClient),
 	}
 
-	http.HandleFunc("/post", s.handlePostToken)
-	http.HandleFunc("/exchange", s.handleExchangeToken)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/post", s.handlePostToken)
+	mux.HandleFunc("/exchange", s.handleExchangeToken)
 
 	log.Println("Starting server on", *bind)
-	http.ListenAndServe(*bind, nil)
+	http.ListenAndServe(*bind, http.StripPrefix(*urlPrefix, mux))
 }
 
 type IntegrityToken struct {
