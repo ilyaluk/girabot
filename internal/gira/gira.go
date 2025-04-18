@@ -13,6 +13,7 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 
+	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/giraauth"
 )
 
@@ -373,6 +374,8 @@ func wrapError(err error) error {
 			return giraauth.ErrInternalServer
 		case strings.Contains(msg, giraauth.ErrInvalidRefreshToken.Error()):
 			return giraauth.ErrInvalidRefreshToken
+		case strings.Contains(msg, firebasetoken.ErrTokenFetch.Error()):
+			return firebasetoken.ErrTokenFetch
 		case strings.Contains(msg, "record not found"):
 			// this happens when token is deleted from DB for some reason (maybe refresh failed)
 			// as graphql lib breaks any errors to strings, we have to check like this...
