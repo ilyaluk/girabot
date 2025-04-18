@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -40,6 +41,7 @@ func main() {
 	http.HandleFunc("/stats", s.handleStats)
 	http.HandleFunc("/post", s.handlePostToken)
 	http.HandleFunc("/exchange", s.handleExchangeToken)
+	http.HandleFunc("/exchangeEnc", s.handleExchangeTokenEncrypted)
 
 	log.Println("Starting server on", *bind)
 	http.ListenAndServe(*bind, http.StripPrefix(*urlPrefix, http.DefaultServeMux))
@@ -130,10 +132,39 @@ func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleExchangeToken(w http.ResponseWriter, r *http.Request) {
+	token, err := s.getIntegrityToken(r)
+	if err != nil {
+		http.Error(w, "failed to get token", http.StatusBadRequest)
+		return
+	}
+
+	w.Write([]byte(token))
+}
+
+func (s *server) handleExchangeTokenEncrypted(w http.ResponseWriter, r *http.Request) {
+	integrityToken, err := s.getIntegrityToken(r)
+	if err != nil {
+		http.Error(w, "failed to get token", http.StatusBadRequest)
+		return
+	}
+
+	// We know it's okay-ish for from getIntegrityToken
+	giraToken := r.Header.Get("x-gira-token")
+
+	enc, err := firebasetoken.Encrypt(integrityToken, giraToken)
+	if err != nil {
+		log.Printf("failed to encrypt token: %v", err)
+		http.Error(w, "failed to encrypt token", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte(enc))
+}
+
+func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 	token := r.Header.Get("x-gira-token")
 	if token == "" {
-		http.Error(w, "missing token", http.StatusBadRequest)
-		return
+		return "", fmt.Errorf("missing token")
 	}
 
 	// First, blindly parse auth token to get "sub". If we have a valid integrity
@@ -141,14 +172,12 @@ func (s *server) handleExchangeToken(w http.ResponseWriter, r *http.Request) {
 	// Access tokens are 2minutes long, calling auth api for each one is slow.
 	jwtToken, _, err := jwt.NewParser().ParseUnverified(token, jwt.MapClaims{})
 	if err != nil {
-		http.Error(w, "bad token", http.StatusBadRequest)
-		return
+		return "", fmt.Errorf("bad token")
 	}
 
 	sub, err := jwtToken.Claims.GetSubject()
 	if err != nil {
-		http.Error(w, "bad token", http.StatusBadRequest)
-		return
+		return "", fmt.Errorf("bad token")
 	}
 
 	nowLeeway := time.Now().Add(10 * time.Second)
@@ -157,16 +186,15 @@ func (s *server) handleExchangeToken(w http.ResponseWriter, r *http.Request) {
 	var tok IntegrityToken
 	if s.db.Where("assigned_to = ? AND expires_at > ?", sub, nowLeeway).First(&tok).Error == nil {
 		log.Printf("got token for user %s (unverified)", sub)
-		w.Write([]byte(tok.Token))
-		return
+
+		return tok.Token, nil
 	}
 
 	// The user doesn't have active integrity token, so we need to verify auth token
 	id, err := s.auth.UserID(r.Context(), token)
 	if err != nil {
 		log.Printf("failed to get user ID: %v", err)
-		http.Error(w, "bad token", http.StatusBadRequest)
-		return
+		return "", fmt.Errorf("failed to get user ID")
 	}
 
 	err = s.db.Transaction(func(tx *gorm.DB) error {
@@ -191,12 +219,12 @@ func (s *server) handleExchangeToken(w http.ResponseWriter, r *http.Request) {
 			Update("assigned_to", id).Update("assigned_at", time.Now()).
 			Error
 	})
+
 	if err != nil {
 		log.Printf("failed to get/assign token: %v", err)
-		http.Error(w, "failed to get token", http.StatusInternalServerError)
-		return
+		return "", fmt.Errorf("failed to get/assign token")
 	}
 
-	log.Printf("got token for user %s", id)
-	w.Write([]byte(tok.Token))
+	log.Printf("got token for user %s (verified)", id)
+	return tok.Token, nil
 }

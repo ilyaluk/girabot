@@ -26,7 +26,7 @@ func TestEncrypt(t *testing.T) {
 
 	intgr := strings.Repeat("e", 960)
 
-	enc, err := encrypt(intgr, authToken)
+	enc, err := Encrypt(intgr, authToken)
 	if err != nil {
 		t.Errorf("failed to encrypt: %v", err)
 	}

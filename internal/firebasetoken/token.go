@@ -24,7 +24,7 @@ func Get(ctx context.Context, authToken string) (string, error) {
 		return "", err
 	}
 
-	return encrypt(raw, authToken)
+	return Encrypt(raw, authToken)
 }
 
 var keyFunc keyfunc.Keyfunc

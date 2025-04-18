@@ -10,7 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func encrypt(integrityToken, authToken string) (string, error) {
+func Encrypt(integrityToken, authToken string) (string, error) {
 	key, iv, err := getKeyAndIV(authToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to get key and IV: %w", err)
