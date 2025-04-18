@@ -1307,6 +1307,15 @@ func (c *customContext) runDebug(text string) error {
 	args := strings.Split(text, " ")
 	log.Printf("running debug command: %+v", args)
 
+	getAccessToken := func() (string, error) {
+		ts := c.getTokenSource()
+		tok, err := ts.Token()
+		if err != nil {
+			return "", err
+		}
+		return tok.AccessToken, nil
+	}
+
 	handlers := map[string]func() (any, error){
 		"user": func() (any, error) {
 			return c.user, nil
@@ -1320,26 +1329,21 @@ func (c *customContext) runDebug(text string) error {
 			return *tok, nil
 		},
 		"token": func() (any, error) {
-			ts := c.getTokenSource()
-			tok, err := ts.Token()
-			if err != nil {
-				return nil, err
-			}
-			return tok.AccessToken, nil
+			return getAccessToken()
 		},
 		"fbToken": func() (any, error) {
-			return firebasetoken.GetRaw(c)
-		},
-		"fbTokenFetch": func() (any, error) {
-			return firebasetoken.FetchRaw(c)
-		},
-		"fbTokenEnc": func() (any, error) {
-			ts := c.getTokenSource()
-			tok, err := ts.Token()
+			tok, err := getAccessToken()
 			if err != nil {
 				return nil, err
 			}
-			return firebasetoken.Get(c, tok.AccessToken)
+			return firebasetoken.FetchRaw(c, tok)
+		},
+		"fbTokenEnc": func() (any, error) {
+			tok, err := getAccessToken()
+			if err != nil {
+				return nil, err
+			}
+			return firebasetoken.Get(c, tok)
 		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c)

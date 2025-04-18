@@ -445,7 +445,14 @@ func (s *server) onError(err error, c tele.Context) {
 				log.Println("bot: error sending recovered error:", err)
 			}
 
-			prettyErr = "There is some issues with bypassing the EMEL checks. We're working on it."
+			prettyErr = "There are some issues with bypassing the EMEL checks. We're working on it."
+
+		case errors.Is(err, firebasetoken.ErrTokenFetch):
+			if _, err := s.bot.Send(tele.ChatID(*adminID), "no tokens in source", tele.ModeMarkdown); err != nil {
+				log.Println("bot: error sending recovered error:", err)
+			}
+
+			prettyErr = "There's currently no tokens to circumvent Gira API limits. Try again later."
 		}
 
 		if prettyErr != "" {

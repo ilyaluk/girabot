@@ -2,12 +2,13 @@ package firebasetoken
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"slices"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/MicahParks/keyfunc/v3"
@@ -15,37 +16,13 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var (
-	cachedToken   string
-	cachedTokenMu sync.Mutex
-)
-
 func Get(ctx context.Context, authToken string) (string, error) {
-	raw, err := GetRaw(ctx)
+	raw, err := FetchRaw(ctx, authToken)
 	if err != nil {
 		return "", err
 	}
 
 	return encrypt(raw, authToken)
-}
-
-func GetRaw(ctx context.Context) (string, error) {
-	cachedTokenMu.Lock()
-	defer cachedTokenMu.Unlock()
-
-	if isValidToken(cachedToken) {
-		return cachedToken, nil
-	}
-
-	tok, err := FetchRaw(ctx)
-	if err != nil {
-		return "", err
-	}
-	cachedToken = tok
-
-	// TODO: log error here if expired
-
-	return cachedToken, nil
 }
 
 var keyFunc keyfunc.Keyfunc
@@ -72,15 +49,6 @@ func GetExpiration(token string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("firebasetoken: token claims: %w", err)
 	}
 	return t.Time, nil
-}
-
-func isValidToken(token string) bool {
-	tok, err := parseToken(token)
-	if err != nil {
-		log.Println("firebasetoken: jwt.Parse:", err)
-		return false
-	}
-	return claimsValid(tok)
 }
 
 func claimsValid(tok *jwt.Token) bool {
@@ -112,31 +80,39 @@ func parseToken(token string) (*jwt.Token, error) {
 	return tok, nil
 }
 
-// TODO: this should be fixed
-const tokenURL = "https://gira.rodlabs.dev/firebase-token"
+var tokenURL = flag.String("token-url", "http://localhost:8003/girabot_tokens/exchange", "token exchange server URL")
 
-func FetchRaw(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
+var ErrTokenFetch = fmt.Errorf("firebasetoken: token fetch error")
+
+func FetchRaw(ctx context.Context, authToken string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *tokenURL, nil)
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("User-Agent", "girabot (https://t.me/BetterGiraBot)")
+	req.Header.Set("X-Gira-Token", authToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("firebasetoken: http %s", resp.Status)
-	}
-
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("firebasetoken: reading body: %w", err)
 	}
-	return string(bodyBytes), nil
+	body := string(bodyBytes)
+
+	if strings.Contains(body, "failed to get token") {
+		return "", ErrTokenFetch
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("firebasetoken: http %s", resp.Status)
+	}
+
+	return body, nil
 }
 
 type Transport struct {
