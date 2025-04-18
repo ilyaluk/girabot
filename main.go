@@ -452,7 +452,7 @@ func (s *server) onError(err error, c tele.Context) {
 				log.Println("bot: error sending recovered error:", err)
 			}
 
-			prettyErr = "There's currently no tokens to circumvent Gira API limits. Try again later."
+			prettyErr = "There's currently no tokens to circumvent Gira API limits. Please try again in a couple of minutes."
 		}
 
 		if prettyErr != "" {

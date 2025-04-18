@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -35,12 +36,12 @@ func main() {
 		auth: giraauth.New(http.DefaultClient),
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/post", s.handlePostToken)
-	mux.HandleFunc("/exchange", s.handleExchangeToken)
+	http.HandleFunc("/stats", s.handleStats) // should be available only from localhost
+	http.HandleFunc(*urlPrefix+"/post", s.handlePostToken)
+	http.HandleFunc(*urlPrefix+"/exchange", s.handleExchangeToken)
 
 	log.Println("Starting server on", *bind)
-	http.ListenAndServe(*bind, http.StripPrefix(*urlPrefix, mux))
+	http.ListenAndServe(*bind, nil)
 }
 
 type IntegrityToken struct {
@@ -54,6 +55,26 @@ type IntegrityToken struct {
 type server struct {
 	db   *gorm.DB
 	auth *giraauth.Client
+}
+
+func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
+	var stats struct {
+		TotalTokens       int64 `json:"total_tokens"`
+		ExpiredUnassigned int64 `json:"expired_unassigned"`
+		ActiveTokens      int64 `json:"active_tokens"`
+		AvailableTokens   int64 `json:"available_tokens"`
+		AssignedTokens    int64 `json:"assigned_tokens"`
+	}
+
+	s.db.Model(&IntegrityToken{}).Count(&stats.TotalTokens)
+	s.db.Model(&IntegrityToken{}).Where("assigned_to = '' AND expires_at < ?", time.Now()).Count(&stats.ExpiredUnassigned)
+	s.db.Model(&IntegrityToken{}).Where("expires_at > ?", time.Now()).Count(&stats.ActiveTokens)
+	s.db.Model(&IntegrityToken{}).Where("assigned_to = '' AND expires_at > ?", time.Now()).Count(&stats.AvailableTokens)
+	s.db.Model(&IntegrityToken{}).Where("assigned_to != '' AND expires_at > ?", time.Now()).Count(&stats.AssignedTokens)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(stats)
 }
 
 func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
