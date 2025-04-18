@@ -1354,7 +1354,7 @@ func (c *customContext) runDebug(text string) error {
 				if err != nil {
 					return nil, err
 				}
-				fbt, err := firebasetoken.Get(c, tok)
+				fbt, err := firebasetoken.FetchRaw(c, tok)
 				if err != nil {
 					return nil, err
 				}
