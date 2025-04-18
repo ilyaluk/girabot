@@ -1293,6 +1293,8 @@ func (c *customContext) handleDebugRetry() error {
 	return c.runDebug(c.Message().ReplyTo.Text)
 }
 
+var debugStatsFirebaseToken = ""
+
 func (c *customContext) runDebug(text string) error {
 	defer func() {
 		if err := recover(); err != nil {
@@ -1344,6 +1346,22 @@ func (c *customContext) runDebug(text string) error {
 				return nil, err
 			}
 			return firebasetoken.Get(c, tok)
+		},
+		"fbStats": func() (any, error) {
+			// nah, race conditions shouldn't happen here
+			if debugStatsFirebaseToken == "" {
+				tok, err := getAccessToken()
+				if err != nil {
+					return nil, err
+				}
+				fbt, err := firebasetoken.Get(c, tok)
+				if err != nil {
+					return nil, err
+				}
+				debugStatsFirebaseToken = fbt
+			}
+
+			return firebasetoken.GetStats(c, debugStatsFirebaseToken)
 		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c)

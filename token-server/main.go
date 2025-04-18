@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/tokenserver"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -36,12 +37,12 @@ func main() {
 		auth: giraauth.New(http.DefaultClient),
 	}
 
-	http.HandleFunc("/stats", s.handleStats) // should be available only from localhost
-	http.HandleFunc(*urlPrefix+"/post", s.handlePostToken)
-	http.HandleFunc(*urlPrefix+"/exchange", s.handleExchangeToken)
+	http.HandleFunc("/stats", s.handleStats)
+	http.HandleFunc("/post", s.handlePostToken)
+	http.HandleFunc("/exchange", s.handleExchangeToken)
 
 	log.Println("Starting server on", *bind)
-	http.ListenAndServe(*bind, nil)
+	http.ListenAndServe(*bind, http.StripPrefix(*urlPrefix, http.DefaultServeMux))
 }
 
 type IntegrityToken struct {
@@ -58,17 +59,29 @@ type server struct {
 }
 
 func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
-	var stats struct {
-		TotalTokens       int64 `json:"total_tokens"`
-		ExpiredUnassigned int64 `json:"expired_unassigned"`
-		ActiveTokens      int64 `json:"active_tokens"`
-		AvailableTokens   int64 `json:"available_tokens"`
-		AssignedTokens    int64 `json:"assigned_tokens"`
+	// Require any token to get stats, even old ones
+	token := r.Header.Get("x-firebase-token")
+	if token == "" {
+		http.Error(w, "missing token", http.StatusBadRequest)
+		return
 	}
+
+	var found int64 = 0
+	s.db.Model(&IntegrityToken{}).Where("token = ?", token).Count(&found)
+	if found == 0 {
+		http.Error(w, "missing token", http.StatusBadRequest)
+		return
+	}
+
+	var stats tokenserver.Stats
 
 	s.db.Model(&IntegrityToken{}).Count(&stats.TotalTokens)
 	s.db.Model(&IntegrityToken{}).Where("assigned_to = '' AND expires_at < ?", time.Now()).Count(&stats.ExpiredUnassigned)
-	s.db.Model(&IntegrityToken{}).Where("expires_at > ?", time.Now()).Count(&stats.ActiveTokens)
+
+	s.db.Model(&IntegrityToken{}).Where("expires_at > ?", time.Now()).Count(&stats.ValidTokens)
+	// Count tokens that will be valid after a 10-minute period
+	s.db.Model(&IntegrityToken{}).Where("expires_at > ?", time.Now().Add(10*time.Minute)).Count(&stats.ValidTokensAfter10Mins)
+
 	s.db.Model(&IntegrityToken{}).Where("assigned_to = '' AND expires_at > ?", time.Now()).Count(&stats.AvailableTokens)
 	s.db.Model(&IntegrityToken{}).Where("assigned_to != '' AND expires_at > ?", time.Now()).Count(&stats.AssignedTokens)
 

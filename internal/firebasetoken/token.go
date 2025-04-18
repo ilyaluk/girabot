@@ -2,6 +2,7 @@ package firebasetoken
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/ilyaluk/girabot/internal/tokenserver"
 	"golang.org/x/oauth2"
 )
 
@@ -80,12 +82,12 @@ func parseToken(token string) (*jwt.Token, error) {
 	return tok, nil
 }
 
-var tokenURL = flag.String("token-url", "http://localhost:8003/girabot_tokens/exchange", "token exchange server URL")
+var tokenEndpoint = flag.String("token-url", "http://localhost:8003/girabot_tokens", "token exchange server base url")
 
 var ErrTokenFetch = fmt.Errorf("firebasetoken: token fetch error")
 
 func FetchRaw(ctx context.Context, authToken string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *tokenURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *tokenEndpoint+"/exchange", nil)
 	if err != nil {
 		return "", err
 	}
@@ -113,6 +115,32 @@ func FetchRaw(ctx context.Context, authToken string) (string, error) {
 	}
 
 	return body, nil
+}
+
+func GetStats(ctx context.Context, fbToken string) (*tokenserver.Stats, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *tokenEndpoint+"/stats", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", "girabot (https://t.me/BetterGiraBot)")
+	req.Header.Set("X-Firebase-Token", fbToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var res tokenserver.Stats
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, fmt.Errorf("firebasetoken: reading stats: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("firebasetoken: http %s", resp.Status)
+	}
+
+	return &res, nil
 }
 
 type Transport struct {
