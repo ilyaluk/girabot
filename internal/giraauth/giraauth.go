@@ -39,7 +39,7 @@ func (c Client) Login(ctx context.Context, email, password string) (*oauth2.Toke
 		Data tokens `json:"data"`
 	}
 
-	if err := c.apiCall(ctx, http.MethodPost, "/auth", reqData, &respData); err != nil {
+	if err := c.apiCall(ctx, http.MethodPost, "/auth", nil, reqData, &respData); err != nil {
 		return nil, err
 	}
 
@@ -55,11 +55,38 @@ func (c Client) Refresh(ctx context.Context, refreshToken string) (*oauth2.Token
 		Data tokens `json:"data"`
 	}
 
-	if err := c.apiCall(ctx, http.MethodPost, "/token/refresh", reqData, &respData); err != nil {
+	if err := c.apiCall(ctx, http.MethodPost, "/token/refresh", nil, reqData, &respData); err != nil {
 		return nil, err
 	}
 
 	return convertTokens(respData.Data)
+}
+
+func (c Client) UserID(ctx context.Context, token string) (string, error) {
+	var respData struct {
+		Error struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+
+		Data struct {
+			ID string `json:"id"`
+			// There are a lot of sensitive fields in the response, but we only need the ID
+		} `json:"data"`
+	}
+
+	hdr := http.Header{
+		"Authorization": []string{"Bearer " + token},
+	}
+	if err := c.apiCall(ctx, http.MethodGet, "/user", hdr, nil, &respData); err != nil {
+		return "", err
+	}
+
+	if respData.Error.Code != 0 {
+		return "", fmt.Errorf("giraauth: %s (%d)", respData.Error.Message, respData.Error.Code)
+	}
+
+	return respData.Data.ID, nil
 }
 
 func convertTokens(ts tokens) (*oauth2.Token, error) {
@@ -83,7 +110,7 @@ var (
 	ErrInvalidRefreshToken = fmt.Errorf("giraauth: invalid refresh token")
 )
 
-func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal any) error {
+func (c Client) apiCall(ctx context.Context, method, api string, headers http.Header, reqVal, respVal any) error {
 	var reqData []byte
 	var err error
 	if reqVal != nil {
@@ -101,6 +128,12 @@ func (c Client) apiCall(ctx context.Context, method, api string, reqVal, respVal
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Gira/3.4.3 (Android 34)")
+
+	if headers != nil {
+		for k, v := range headers {
+			req.Header.Set(k, v[0])
+		}
+	}
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {

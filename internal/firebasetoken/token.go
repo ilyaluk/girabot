@@ -58,19 +58,58 @@ func init() {
 	}
 }
 
+func GetExpiration(token string) (time.Time, error) {
+	tok, err := parseToken(token)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !claimsValid(tok) {
+		return time.Time{}, fmt.Errorf("firebasetoken: token claims: invalid token")
+	}
+
+	t, err := tok.Claims.GetExpirationTime()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("firebasetoken: token claims: %w", err)
+	}
+	return t.Time, nil
+}
+
 func isValidToken(token string) bool {
-	if token == "" {
+	tok, err := parseToken(token)
+	if err != nil {
+		log.Println("firebasetoken: jwt.Parse:", err)
 		return false
+	}
+	return claimsValid(tok)
+}
+
+func claimsValid(tok *jwt.Token) bool {
+	if tok == nil {
+		return false
+	}
+	if !tok.Valid {
+		return false
+	}
+	iss, err := tok.Claims.GetIssuer()
+	if err != nil {
+		log.Println("firebasetoken: token claims: ", err)
+		return false
+	}
+	return iss == "https://firebaseappcheck.googleapis.com/860507348154"
+}
+
+func parseToken(token string) (*jwt.Token, error) {
+	if token == "" {
+		return nil, fmt.Errorf("firebasetoken: empty token")
 	}
 
 	// Set leeway to -10 seconds to refresh token before it expires.
 	tok, err := jwt.Parse(token, keyFunc.Keyfunc, jwt.WithLeeway(-10*time.Second))
 	if err != nil {
-		log.Println("firebasetoken: jwt.Parse:", err)
-		return false
+		return nil, err
 	}
 
-	return tok.Valid
+	return tok, nil
 }
 
 // TODO: this should be fixed
