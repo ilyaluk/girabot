@@ -81,10 +81,11 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 	s.db.Model(&IntegrityToken{}).Where("assigned_to = '' AND expires_at < ?", time.Now()).Count(&stats.ExpiredUnassigned)
 
 	s.db.Model(&IntegrityToken{}).Where("expires_at > ?", time.Now()).Count(&stats.ValidTokens)
-	// Count tokens that will be valid after a 10-minute period
-	s.db.Model(&IntegrityToken{}).Where("expires_at > ?", time.Now().Add(10*time.Minute)).Count(&stats.ValidTokensAfter10Mins)
 
 	s.db.Model(&IntegrityToken{}).Where("assigned_to = '' AND expires_at > ?", time.Now()).Count(&stats.AvailableTokens)
+	// Count tokens that will be available after a 10-minute period
+	s.db.Model(&IntegrityToken{}).Where("assigned_to = '' AND expires_at > ?", time.Now().Add(10*time.Minute)).Count(&stats.AvailableTokensAfter10Mins)
+
 	s.db.Model(&IntegrityToken{}).Where("assigned_to != '' AND expires_at > ?", time.Now()).Count(&stats.AssignedTokens)
 
 	w.Header().Set("Content-Type", "application/json")
