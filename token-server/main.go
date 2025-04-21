@@ -181,7 +181,9 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 		return "", fmt.Errorf("bad token")
 	}
 
-	nowLeeway := time.Now().Add(10 * time.Second)
+	// Add leeway to match auth token lifetime. This adds some wasted firebase
+	// tokens, but makes UX more stable for users.
+	nowLeeway := time.Now().Add(2 * time.Minute)
 
 	// Check if integrity token is already assigned to a user
 	var tok IntegrityToken
