@@ -106,7 +106,7 @@ func FetchRaw(ctx context.Context, authToken string) (string, error) {
 	}
 	body := string(bodyBytes)
 
-	if strings.Contains(body, "failed to get token") {
+	if strings.Contains(body, "no tokens available") {
 		return "", ErrTokenFetch
 	}
 

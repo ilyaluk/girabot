@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"github.com/ilyaluk/girabot/internal/tokenserver"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var (
@@ -25,7 +27,9 @@ var (
 func main() {
 	flag.Parse()
 
-	db, err := gorm.Open(sqlite.Open(*dbPath), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(*dbPath), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -134,8 +138,12 @@ func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleExchangeToken(w http.ResponseWriter, r *http.Request) {
 	token, err := s.getIntegrityToken(r)
+	if errors.Is(err, noTokensError) {
+		http.Error(w, "no tokens available", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		http.Error(w, "failed to get token", http.StatusBadRequest)
+		http.Error(w, "failed to get token", http.StatusInternalServerError)
 		return
 	}
 
@@ -144,8 +152,12 @@ func (s *server) handleExchangeToken(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleExchangeTokenEncrypted(w http.ResponseWriter, r *http.Request) {
 	integrityToken, err := s.getIntegrityToken(r)
+	if errors.Is(err, noTokensError) {
+		http.Error(w, "no tokens available", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		http.Error(w, "failed to get token", http.StatusBadRequest)
+		http.Error(w, "failed to get token", http.StatusInternalServerError)
 		return
 	}
 
@@ -161,6 +173,8 @@ func (s *server) handleExchangeTokenEncrypted(w http.ResponseWriter, r *http.Req
 
 	w.Write([]byte(enc))
 }
+
+var noTokensError = fmt.Errorf("no tokens available")
 
 func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 	token := r.Header.Get("x-gira-token")
@@ -222,6 +236,10 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 			Update("assigned_to", id).Update("assigned_at", time.Now()).
 			Error
 	})
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", noTokensError
+	}
 
 	if err != nil {
 		log.Printf("failed to get/assign token: %v", err)
