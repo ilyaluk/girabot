@@ -57,6 +57,7 @@ type IntegrityToken struct {
 	ExpiresAt  time.Time // Can be deducted from token, but for simplicity we store it
 	AssignedTo string    `gorm:"index"` // User's sub, verified upon assignment
 	AssignedAt time.Time
+	UserAgent  string
 }
 
 type server struct {
@@ -233,11 +234,14 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 
 		return tx.Model(&IntegrityToken{}).
 			Where("token = ?", tok.Token).
-			Update("assigned_to", id).Update("assigned_at", time.Now()).
+			Update("assigned_to", id).
+			Update("assigned_at", time.Now()).
+			Update("user_agent", r.UserAgent()).
 			Error
 	})
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Printf("no tokens available for %v", id)
 		return "", noTokensError
 	}
 
