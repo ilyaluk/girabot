@@ -19,7 +19,6 @@ import (
 	"golang.org/x/oauth2"
 	tele "gopkg.in/telebot.v3"
 
-	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/gira"
 )
 
@@ -44,7 +43,7 @@ func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 
 	ts := s.getTokenSource(uid)
 	oauthC := oauth2.NewClient(r.Context(), ts)
-	fbC := firebasetoken.NewClient(oauthC.Transport, ts)
+	fbC := newFbTokenClient(oauthC.Transport, ts)
 	girac := gira.New(fbC)
 
 	stations, err := girac.GetStations(r.Context())

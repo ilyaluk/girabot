@@ -1,4 +1,4 @@
-package firebasetoken
+package tokencrypto
 
 import (
 	"strings"

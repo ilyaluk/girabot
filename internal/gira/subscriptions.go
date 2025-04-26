@@ -9,7 +9,7 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 	"github.com/hasura/go-graphql-client/pkg/jsonutil"
-	"github.com/ilyaluk/girabot/internal/firebasetoken"
+	"github.com/ilyaluk/girabot/internal/tokenserver"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/oauth2"
@@ -204,7 +204,7 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 }
 
 func startOneSubscription(ctx context.Context, query any, token string, handler func([]byte, error) error) error {
-	fbToken, err := firebasetoken.Get(ctx, token)
+	fbToken, err := tokenserver.GetEncrypted(ctx, token)
 	if err != nil {
 		return err
 	}

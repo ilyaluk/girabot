@@ -21,9 +21,9 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/gira"
 	"github.com/ilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/tokenserver"
 )
 
 type User struct {
@@ -326,7 +326,7 @@ func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, cont
 
 	ts := s.getTokenSource(u.ID)
 	oauthC := oauth2.NewClient(ctx, ts)
-	fbC := firebasetoken.NewClient(oauthC.Transport, ts)
+	fbC := newFbTokenClient(oauthC.Transport, ts)
 	girac := gira.New(fbC)
 
 	return &customContext{
@@ -447,7 +447,7 @@ func (s *server) onError(err error, c tele.Context) {
 
 			prettyErr = "There are some issues with bypassing the EMEL checks. We're working on it."
 
-		case errors.Is(err, firebasetoken.ErrTokenFetch):
+		case errors.Is(err, tokenserver.ErrTokenFetch):
 			if _, err := s.bot.Send(tele.ChatID(*adminID), "no tokens in source", tele.ModeMarkdown); err != nil {
 				log.Println("bot: error sending recovered error:", err)
 			}

@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/tokencrypto"
 	"github.com/ilyaluk/girabot/internal/tokenserver"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -21,7 +25,7 @@ import (
 var (
 	dbPath    = flag.String("db-path", "gira-tokens.db", "path to the SQLite database")
 	bind      = flag.String("bind", ":8080", "address to bind")
-	urlPrefix = flag.String("url-prefix", "/girabot_tokens", "URL prefix for the server")
+	urlPrefix = flag.String("url-prefix", "", "URL prefix for the server")
 )
 
 func main() {
@@ -42,20 +46,65 @@ func main() {
 		auth: giraauth.New(http.DefaultClient),
 	}
 
+	if err := s.oneshotMigrateTokenFields(); err != nil {
+		log.Fatalf("failed to migrate token fields: %v", err)
+	}
+
+	go s.cleanupTokens()
+
 	http.HandleFunc("/stats", s.handleStats)
 	http.HandleFunc("/post", s.handlePostToken)
 	http.HandleFunc("/exchange", s.handleExchangeToken)
 	http.HandleFunc("/exchangeEnc", s.handleExchangeTokenEncrypted)
 
+	httpSrv := &http.Server{
+		Addr:    *bind,
+		Handler: http.StripPrefix(*urlPrefix, http.DefaultServeMux),
+	}
+
+	// Handle termination gracefully
+	intCh := make(chan os.Signal, 1)
+	signal.Notify(intCh, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-intCh
+		log.Println("Shutting down server...")
+
+		db, err := db.DB()
+		if err != nil {
+			log.Printf("Failed to get DB instance: %v", err)
+			return
+		}
+
+		if err := db.Close(); err != nil {
+			log.Printf("Failed to close DB: %v", err)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		httpSrv.Shutdown(ctx)
+
+		log.Println("Server shut down gracefully")
+	}()
+
 	log.Println("Starting server on", *bind)
-	http.ListenAndServe(*bind, http.StripPrefix(*urlPrefix, http.DefaultServeMux))
+	httpSrv.ListenAndServe()
 }
 
 type IntegrityToken struct {
-	Token      string
-	CreatedAt  time.Time
-	ExpiresAt  time.Time // Can be deducted from token, but for simplicity we store it
-	AssignedTo string    `gorm:"index"` // User's sub, verified upon assignment
+	Token     string `gorm:"index:idx_token"`
+	CreatedAt time.Time
+
+	// These three can be deducted from Token, but for simplicity we store it
+	ExpiresAt time.Time `gorm:"index:idx_expires;index:idx_expires_assigned"`
+	TokenID   string    // 'jti' claim
+	TokenSub  string    // 'sub' claim
+
+	// User's auth token 'sub' claim, token is verified upon assignment
+	// It is not verified upon subsequent requests if there are valid token
+	// for the user.
+	AssignedTo string `gorm:"index:idx_assigned;index:idx_expires_assigned"`
 	AssignedAt time.Time
 	UserAgent  string
 }
@@ -73,10 +122,9 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var found int64 = 0
-	s.db.Model(&IntegrityToken{}).Where("token = ?", token).Count(&found)
-	if found == 0 {
-		http.Error(w, "missing token", http.StatusBadRequest)
+	// Ignore expiration time, we just need to token to be valid
+	if _, err := parseTokenWithLeeway(token, 100*365*24*time.Hour); err != nil {
+		http.Error(w, "bad token", http.StatusBadRequest)
 		return
 	}
 
@@ -105,29 +153,31 @@ func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exp, err := firebasetoken.GetExpiration(token)
+	claims, err := parseToken(token)
 	if err != nil {
 		http.Error(w, "bad token", http.StatusBadRequest)
 		return
 	}
 
-	if exp.Before(time.Now()) {
-		http.Error(w, "invalid token", http.StatusBadRequest)
-		return
-	}
-
-	var existingToken IntegrityToken
-	if result := s.db.Where("token = ?", token).First(&existingToken); result.Error == nil {
+	var count int64
+	result := s.db.Model(&IntegrityToken{}).Where("token = ?", token).Count(&count)
+	if result.Error == nil && count > 0 {
+		// just in case some buggy token source will re-submit
 		http.Error(w, "token already exists", http.StatusConflict)
 		return
 	}
 
-	log.Printf("got token (valid until %v): %v", exp, token)
+	log.Printf(
+		"got token (valid until %v): sub %v jti %v",
+		claims.ExpiresAt, claims.Subject, claims.ID,
+	)
 
 	if err := s.db.Create(&IntegrityToken{
 		Token:     token,
 		CreatedAt: time.Now(),
-		ExpiresAt: exp,
+		ExpiresAt: claims.ExpiresAt.Time,
+		TokenID:   claims.ID,
+		TokenSub:  claims.Subject,
 	}).Error; err != nil {
 		log.Printf("failed to save token: %v", err)
 		http.Error(w, "failed to save token", http.StatusInternalServerError)
@@ -165,7 +215,7 @@ func (s *server) handleExchangeTokenEncrypted(w http.ResponseWriter, r *http.Req
 	// We know it's okay-ish for from getIntegrityToken
 	giraToken := r.Header.Get("x-gira-token")
 
-	enc, err := firebasetoken.Encrypt(integrityToken, giraToken)
+	enc, err := tokencrypto.Encrypt(integrityToken, giraToken)
 	if err != nil {
 		log.Printf("failed to encrypt token: %v", err)
 		http.Error(w, "failed to encrypt token", http.StatusInternalServerError)
@@ -252,4 +302,55 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 
 	log.Printf("got token for user %s (verified)", id)
 	return tok.Token, nil
+}
+
+func (s *server) oneshotMigrateTokenFields() error {
+	var tokens []IntegrityToken
+	result := s.db.Find(&tokens, "token_id IS NULL")
+	if result.Error != nil {
+		return fmt.Errorf("failed to fetch tokens: %v", result.Error)
+	}
+
+	for _, t := range tokens {
+		// Parse token ignoring expiration time
+		claims, err := parseTokenWithLeeway(t.Token, 100*365*24*time.Hour)
+		if err != nil {
+			return err
+		}
+
+		// Update token fields
+		if err := s.db.Model(&t).Where("token", t.Token).Updates(map[string]any{
+			"token_id":  claims.ID,
+			"token_sub": claims.Subject,
+		}).Error; err != nil {
+			return fmt.Errorf("failed to update token fields: %v", err)
+		}
+
+		log.Printf("updated token fields for token ID: %s", claims.ID)
+	}
+
+	log.Printf("completed migration of %d tokens", len(tokens))
+	return nil
+}
+
+func (s *server) cleanupTokens() {
+	cleanup := func() {
+		// Update all expired tokens with non-empty token field
+		// Set token field to empty string
+		res := s.db.Model(&IntegrityToken{}).
+			Where("expires_at < ? AND token != ''", time.Now()).
+			Update("token", "")
+
+		if res.Error != nil {
+			log.Printf("failed to cleanup tokens: %v", res.Error)
+		}
+		if res.RowsAffected > 0 {
+			log.Printf("cleaned up %d tokens", res.RowsAffected)
+		}
+	}
+
+	cleanup()
+	for range time.Tick(time.Hour) {
+		cleanup()
+	}
 }

@@ -21,9 +21,9 @@ import (
 	tele "gopkg.in/telebot.v3"
 	"gorm.io/gorm/clause"
 
-	"github.com/ilyaluk/girabot/internal/firebasetoken"
 	"github.com/ilyaluk/girabot/internal/gira"
 	"github.com/ilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/tokenserver"
 )
 
 func (c *customContext) handleStart() error {
@@ -1338,14 +1338,14 @@ func (c *customContext) runDebug(text string) error {
 			if err != nil {
 				return nil, err
 			}
-			return firebasetoken.FetchRaw(c, tok)
+			return tokenserver.Get(c, tok)
 		},
 		"fbTokenEnc": func() (any, error) {
 			tok, err := getAccessToken()
 			if err != nil {
 				return nil, err
 			}
-			return firebasetoken.Get(c, tok)
+			return tokenserver.GetEncrypted(c, tok)
 		},
 		"fbStats": func() (any, error) {
 			// nah, race conditions shouldn't happen here
@@ -1354,14 +1354,14 @@ func (c *customContext) runDebug(text string) error {
 				if err != nil {
 					return nil, err
 				}
-				fbt, err := firebasetoken.FetchRaw(c, tok)
+				fbt, err := tokenserver.Get(c, tok)
 				if err != nil {
 					return nil, err
 				}
 				debugStatsFirebaseToken = fbt
 			}
 
-			return firebasetoken.GetStats(c, debugStatsFirebaseToken)
+			return tokenserver.GetStats(c, debugStatsFirebaseToken)
 		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c)
