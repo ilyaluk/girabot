@@ -41,6 +41,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	db.Migrator().DropColumn(&IntegrityToken{}, "token_id")
+	db.Migrator().DropColumn(&IntegrityToken{}, "token_sub")
+
 	s := &server{
 		db:   db,
 		auth: giraauth.New(http.DefaultClient),
@@ -69,12 +72,8 @@ func main() {
 		db, err := db.DB()
 		if err != nil {
 			log.Printf("Failed to get DB instance: %v", err)
-			return
-		}
-
-		if err := db.Close(); err != nil {
+		} else if err := db.Close(); err != nil {
 			log.Printf("Failed to close DB: %v", err)
-			return
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -89,20 +88,19 @@ func main() {
 }
 
 type IntegrityToken struct {
-	Token     string `gorm:"index:idx_token"`
-	CreatedAt time.Time
+	Token       string `gorm:"index:idx_token"`
+	CreatedAt   time.Time
+	TokenSource string // freeform string, used to identify the source device
 
-	// These three can be deducted from Token, but for simplicity we store it
+	// It can be deducted from Token, but for simplicity we store it
 	ExpiresAt time.Time `gorm:"index:idx_expires;index:idx_expires_assigned"`
-	TokenID   string    // 'jti' claim
-	TokenSub  string    // 'sub' claim
 
 	// User's auth token 'sub' claim, token is verified upon assignment
 	// It is not verified upon subsequent requests if there are valid token
 	// for the user.
 	AssignedTo string `gorm:"index:idx_assigned;index:idx_expires_assigned"`
 	AssignedAt time.Time
-	UserAgent  string
+	UserAgent  string //of the client that requested the token
 }
 
 type server struct {
@@ -113,10 +111,6 @@ type server struct {
 func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 	// Require any token to get stats, even old ones
 	token := r.Header.Get("x-firebase-token")
-	if token == "" {
-		http.Error(w, "missing token", http.StatusBadRequest)
-		return
-	}
 
 	// Ignore expiration time, we just need to token to be valid
 	if _, err := parseTokenWithLeeway(token, 100*365*24*time.Hour); err != nil {
@@ -144,14 +138,15 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("x-firebase-token")
-	if token == "" {
-		http.Error(w, "missing token", http.StatusBadRequest)
-		return
-	}
-
 	claims, err := parseToken(token)
 	if err != nil {
 		http.Error(w, "bad token", http.StatusBadRequest)
+		return
+	}
+
+	tokenSrc := r.Header.Get("x-firebase-token")
+	if len(tokenSrc) > 32 {
+		http.Error(w, "long token source", http.StatusBadRequest)
 		return
 	}
 
@@ -169,11 +164,10 @@ func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := s.db.Create(&IntegrityToken{
-		Token:     token,
-		CreatedAt: time.Now(),
-		ExpiresAt: claims.ExpiresAt.Time,
-		TokenID:   claims.ID,
-		TokenSub:  claims.Subject,
+		Token:       token,
+		CreatedAt:   time.Now(),
+		TokenSource: tokenSrc,
+		ExpiresAt:   claims.ExpiresAt.Time,
 	}).Error; err != nil {
 		log.Printf("failed to save token: %v", err)
 		http.Error(w, "failed to save token", http.StatusInternalServerError)
@@ -280,10 +274,11 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 
 		return tx.Model(&IntegrityToken{}).
 			Where("token = ?", tok.Token).
-			Update("assigned_to", id).
-			Update("assigned_at", time.Now()).
-			Update("user_agent", r.UserAgent()).
-			Error
+			Updates(map[string]any{
+				"assigned_to": id,
+				"assigned_at": time.Now(),
+				"user_agent":  r.UserAgent(),
+			}).Error
 	})
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
