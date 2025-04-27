@@ -156,7 +156,7 @@ func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf(
-		"got token (valid until %v): sub %v jti %v",
+		"new integrity token (valid until %v): sub %v jti %v",
 		claims.ExpiresAt, claims.Subject, claims.ID,
 	)
 
@@ -240,7 +240,7 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 	// Check if integrity token is already assigned to a user
 	var tok IntegrityToken
 	if s.db.Where("assigned_to = ? AND expires_at > ?", sub, nowLeeway).First(&tok).Error == nil {
-		log.Printf("got token for user %s (unverified)", sub)
+		log.Printf("found assigned token for %s (unverified)", sub)
 
 		return tok.Token, nil
 	}
@@ -288,7 +288,7 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 		return "", fmt.Errorf("failed to get/assign token")
 	}
 
-	log.Printf("got token for user %s (verified)", id)
+	log.Printf("assigned new token for %s (verified)", id)
 	return tok.Token, nil
 }
 
