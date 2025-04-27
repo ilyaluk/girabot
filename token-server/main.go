@@ -46,10 +46,6 @@ func main() {
 		auth: giraauth.New(http.DefaultClient),
 	}
 
-	if err := s.oneshotMigrateTokenFields(); err != nil {
-		log.Fatalf("failed to migrate token fields: %v", err)
-	}
-
 	go s.cleanupTokens()
 
 	http.HandleFunc("/stats", s.handleStats)
@@ -302,35 +298,6 @@ func (s *server) getIntegrityToken(r *http.Request) (string, error) {
 
 	log.Printf("got token for user %s (verified)", id)
 	return tok.Token, nil
-}
-
-func (s *server) oneshotMigrateTokenFields() error {
-	var tokens []IntegrityToken
-	result := s.db.Find(&tokens, "token_id IS NULL")
-	if result.Error != nil {
-		return fmt.Errorf("failed to fetch tokens: %v", result.Error)
-	}
-
-	for _, t := range tokens {
-		// Parse token ignoring expiration time
-		claims, err := parseTokenWithLeeway(t.Token, 100*365*24*time.Hour)
-		if err != nil {
-			return err
-		}
-
-		// Update token fields
-		if err := s.db.Model(&t).Where("token", t.Token).Updates(map[string]any{
-			"token_id":  claims.ID,
-			"token_sub": claims.Subject,
-		}).Error; err != nil {
-			return fmt.Errorf("failed to update token fields: %v", err)
-		}
-
-		log.Printf("updated token fields for token ID: %s", claims.ID)
-	}
-
-	log.Printf("completed migration of %d tokens", len(tokens))
-	return nil
 }
 
 func (s *server) cleanupTokens() {
