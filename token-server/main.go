@@ -41,9 +41,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db.Migrator().DropColumn(&IntegrityToken{}, "token_id")
-	db.Migrator().DropColumn(&IntegrityToken{}, "token_sub")
-
 	s := &server{
 		db:   db,
 		auth: giraauth.New(http.DefaultClient),
@@ -144,7 +141,7 @@ func (s *server) handlePostToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenSrc := r.Header.Get("x-firebase-token")
+	tokenSrc := r.Header.Get("x-token-source")
 	if len(tokenSrc) > 32 {
 		http.Error(w, "long token source", http.StatusBadRequest)
 		return
