@@ -46,7 +46,7 @@ func New(httpc *http.Client) *Client {
 	httpc.Transport = retryablehttp.NewTransport(httpc.Transport)
 
 	return &Client{
-		c: graphql.NewClient("https://c2g091p01.emel.pt/api/graphql", httpc),
+		c: graphql.NewClient("https://c2g091p01.emel.pt/ws/graphql", httpc),
 	}
 }
 

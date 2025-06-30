@@ -73,9 +73,6 @@ func cloneRequest(r *http.Request) *http.Request {
 
 func newFbTokenClient(base http.RoundTripper, tokenSource oauth2.TokenSource) *http.Client {
 	return &http.Client{
-		Transport: &fbTokenTransport{
-			Base:        base,
-			tokenSource: tokenSource,
-		},
+		Transport: base,
 	}
 }
