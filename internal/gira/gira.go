@@ -14,6 +14,7 @@ import (
 	"github.com/hasura/go-graphql-client"
 
 	"github.com/ilyaluk/girabot/internal/giraauth"
+	"github.com/ilyaluk/girabot/internal/retryablehttp"
 	"github.com/ilyaluk/girabot/internal/tokenserver"
 )
 
@@ -42,10 +43,7 @@ var (
 )
 
 func New(httpc *http.Client) *Client {
-	t := &retryableTransport{
-		inner: httpc.Transport,
-	}
-	httpc.Transport = t
+	httpc.Transport = retryablehttp.NewTransport(httpc.Transport)
 
 	return &Client{
 		c: graphql.NewClient("https://c2g091p01.emel.pt/api/graphql", httpc),

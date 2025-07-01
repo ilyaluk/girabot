@@ -11,6 +11,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
+
+	"github.com/ilyaluk/girabot/internal/retryablehttp"
 )
 
 type Client struct {
@@ -18,6 +20,8 @@ type Client struct {
 }
 
 func New(httpc *http.Client) *Client {
+	httpc.Transport = retryablehttp.NewTransport(httpc.Transport)
+
 	return &Client{httpc: httpc}
 }
 

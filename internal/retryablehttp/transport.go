@@ -1,4 +1,4 @@
-package gira
+package retryablehttp
 
 import (
 	"bytes"
@@ -16,8 +16,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type retryableTransport struct {
+type Transport struct {
 	inner http.RoundTripper
+}
+
+func NewTransport(inner http.RoundTripper) http.RoundTripper {
+	if inner == nil {
+		inner = http.DefaultTransport
+	}
+	return &Transport{inner: inner}
 }
 
 var (
@@ -27,12 +34,21 @@ var (
 	retriesCnt      = promauto.NewCounter(prometheus.CounterOpts{Name: "gira_retries_total"})
 )
 
-const (
+var (
 	requestTimeout = 5 * time.Second
 	retryCount     = 10
 )
 
-func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func SetRequestTimeout(timeout time.Duration) {
+	// hacky way to do this, but eh
+	requestTimeout = timeout
+}
+
+func SetRetryCount(count int) {
+	retryCount = count
+}
+
+func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	requestsCnt.Inc()
 
 	req.Header.Set("User-Agent", "Gira/3.4.3 (Android 34)")
@@ -47,7 +63,7 @@ func (t *retryableTransport) RoundTrip(req *http.Request) (*http.Response, error
 			return nil, err
 		}
 	}
-	log.Println("retry: req:", req.Method, req.URL, string(reqBytes))
+	log.Println("retry: req:", req.Method, req.URL, string(reqBytes)[:min(len(reqBytes), 500)])
 
 	var resp *http.Response
 
@@ -102,7 +118,7 @@ func doRetry(resp *http.Response, respBytes []byte) bool {
 	}
 
 	// sometimes backend just returns shitty INVALID_OPERATION error, retry it
-	if isInvalidOperationError(respBytes) {
+	if IsInvalidOperationError(respBytes) {
 		return true
 	}
 
@@ -110,7 +126,7 @@ func doRetry(resp *http.Response, respBytes []byte) bool {
 	return false
 }
 
-func isInvalidOperationError(respBytes []byte) bool {
+func IsInvalidOperationError(respBytes []byte) bool {
 	var rv struct {
 		Errors graphql.Errors
 	}

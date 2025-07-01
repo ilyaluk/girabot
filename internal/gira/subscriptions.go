@@ -9,6 +9,7 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 	"github.com/hasura/go-graphql-client/pkg/jsonutil"
+	"github.com/ilyaluk/girabot/internal/retryablehttp"
 	"github.com/ilyaluk/girabot/internal/tokenserver"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -154,7 +155,7 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 	handler := func(msg []byte, err error) error {
 		var val T
 		if err != nil {
-			if isInvalidOperationError([]byte(err.Error())) {
+			if retryablehttp.IsInvalidOperationError([]byte(err.Error())) {
 				subInvalidErrsCnt.Inc()
 				// backend regularly returns this error, retry it
 				log.Println("subscription error was INVALID_OPERATION")
