@@ -413,11 +413,11 @@ func (s *server) onError(err error, c tele.Context) {
 
 		case errors.Is(err, gira.ErrAlreadyHasActiveTrip):
 			prettyErr = "Gira says that you already have an active trip. This is probably their bug. " +
-				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
+				"Try unlocking bike again, or call Gira support at +351 211 163 125."
 
 		case errors.Is(err, gira.ErrBikeAlreadyReserved):
 			prettyErr = "Gira says that the bike is already reserved. This is probably their bug. " +
-				"Try unlocking bike again, or call Gira support at +351 211 163 060 (press 2 for operator)."
+				"Try unlocking bike again, or call Gira support at +351 211 163 125."
 
 		case errors.Is(err, gira.ErrBikeInRepair):
 			prettyErr = "Gira says that the bike is in repair. Try other one."
