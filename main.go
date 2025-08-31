@@ -395,6 +395,7 @@ func (s *server) onError(err error, c tele.Context) {
 		case strings.Contains(err.Error(), "read: connection reset by peer") &&
 			strings.Contains(err.Error(), "https://api.telegram.org/"):
 
+			log.Println("bot: ignoring connection reset error")
 			if _, err := s.bot.Send(tele.ChatID(*adminID), "connreset: "+err.Error(), tele.ModeMarkdown); err != nil {
 				log.Println("bot: error sending recovered error:", err)
 			}
