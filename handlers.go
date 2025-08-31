@@ -49,13 +49,13 @@ func setupHandlers(s *server) {
 
 	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(*adminID))
 
-	authed.Handle(&btnMapLegacy, wrapHandler((*customContext).handleShowMapLegacy))
-	authed.Handle(&btnCancelMenuLegacy, wrapHandler((*customContext).handleShowMapLegacy))
-
 	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
 	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))
 	authed.Handle(&btnHelp, wrapHandler((*customContext).handleHelp))
-	authed.Handle(&btnFeedback, wrapHandler((*customContext).handleFeedback))
+
+	authed.Handle(&btnLegacyMap, wrapHandler((*customContext).handleShowMapLegacy))
+	authed.Handle(&btnLegacyCancelMenu, wrapHandler((*customContext).handleShowMapLegacy))
+	authed.Handle(&btnLegacyFeedback, wrapHandler((*customContext).handleFeedback))
 
 	authed.Handle("\f"+btnKeyTypeStation, wrapHandler((*customContext).handleStation))
 	authed.Handle("\f"+btnKeyTypeBike, wrapHandler((*customContext).handleTapBike))
@@ -113,19 +113,19 @@ var (
 	menu = &tele.ReplyMarkup{ResizeKeyboard: true}
 
 	btnLocation  = menu.Location("📍 Location")
-	btnMapLegacy = menu.Text("🗺️ Map")
 	btnFavorites = menu.Text("⭐️ Favorites")
 	btnStatus    = menu.Text("ℹ️ Status")
 	btnHelp      = menu.Text("❓ Help")
-	btnFeedback  = menu.Text("📝 Feedback")
 
-	btnCancelMenuLegacy = menu.Text("❌ Cancel")
+	btnLegacyMap        = menu.Text("🗺️ Map")
+	btnLegacyFeedback   = menu.Text("📝 Feedback")
+	btnLegacyCancelMenu = menu.Text("❌ Cancel")
 )
 
 func init() {
 	menu.Reply(
 		menu.Row(btnLocation, btnFavorites),
-		menu.Row(btnStatus, btnHelp, btnFeedback),
+		menu.Row(btnStatus, btnHelp, btnLegacyFeedback),
 	)
 }
 
