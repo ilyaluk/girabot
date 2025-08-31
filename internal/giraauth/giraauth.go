@@ -20,9 +20,10 @@ type Client struct {
 }
 
 func New(httpc *http.Client) *Client {
-	httpc.Transport = retryablehttp.NewTransport(httpc.Transport)
+	client := *httpc
+	client.Transport = retryablehttp.NewTransport(httpc.Transport)
 
-	return &Client{httpc: httpc}
+	return &Client{httpc: &client}
 }
 
 type tokens struct {

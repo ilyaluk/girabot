@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/hasura/go-graphql-client"
@@ -187,7 +188,7 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 
 			err = startOneSubscription(ctx, query, tok.AccessToken, handler)
 			if err != nil {
-				log.Println("subscription error:", err)
+				log.Println("subscriptionOne error:", err)
 				return
 			}
 
@@ -206,7 +207,13 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 func startOneSubscription(ctx context.Context, query any, token string, handler func([]byte, error) error) error {
 	subConnectsCnt.Inc()
 
-	c := graphql.NewSubscriptionClient("wss://c2g091p01.emel.pt/ws/graphql")
+	c := graphql.NewSubscriptionClient("wss://c2g091p01.emel.pt/ws/graphql").
+		WithWebSocketOptions(graphql.WebsocketOptions{
+			HTTPHeader: http.Header{
+				"User-Agent": []string{"Gira/3.4.3 (Android 34)"},
+			},
+		})
+
 	if _, err := c.Subscribe(query, map[string]any{"token": token}, handler); err != nil {
 		log.Println("subscription create error:", err)
 		return err
