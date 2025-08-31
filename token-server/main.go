@@ -181,7 +181,7 @@ func (s *server) handleExchangeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "failed to get token", http.StatusInternalServerError)
+		http.Error(w, "failed to get token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -195,7 +195,7 @@ func (s *server) handleExchangeTokenEncrypted(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err != nil {
-		http.Error(w, "failed to get token", http.StatusInternalServerError)
+		http.Error(w, "failed to get token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
