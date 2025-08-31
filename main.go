@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
+	_ "net/http/pprof" // exposed only at localhost
 	"os"
 	"os/signal"
 	"strings"
@@ -24,6 +26,7 @@ import (
 	"github.com/ilyaluk/girabot/internal/gira"
 	"github.com/ilyaluk/girabot/internal/giraauth"
 	"github.com/ilyaluk/girabot/internal/tokenserver"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type User struct {
@@ -110,6 +113,7 @@ var (
 	domain     = flag.String("domain", "luk.moe", "domain for webapp/webhook")
 	urlPrefix  = flag.String("url-prefix", "/girabot_prod", "url prefix for webapp")
 	listenPort = flag.String("port", "8001", "port to listen on")
+	debugPort  = flag.String("debug-port", "9090", "debug port to listen on (metrics/pprof)")
 )
 
 func main() {
@@ -149,7 +153,15 @@ func main() {
 
 	go func() {
 		log.Println("listening on", *listenPort)
-		if err := http.ListenAndServe(fmt.Sprint("127.0.0.1:", *listenPort), handler); err != nil {
+		if err := http.ListenAndServe(net.JoinHostPort("127.0.0.1", *listenPort), handler); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	http.Handle("/metrics", promhttp.Handler())
+	go func() {
+		log.Println("debug server listening on", *debugPort)
+		if err := http.ListenAndServe(net.JoinHostPort("127.0.0.1", *debugPort), http.DefaultServeMux); err != nil {
 			log.Fatal(err)
 		}
 	}()
