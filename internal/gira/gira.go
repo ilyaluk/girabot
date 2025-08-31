@@ -13,9 +13,7 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 
-	"github.com/ilyaluk/girabot/internal/giraauth"
 	"github.com/ilyaluk/girabot/internal/retryablehttp"
-	"github.com/ilyaluk/girabot/internal/tokenserver"
 )
 
 var (
@@ -366,22 +364,7 @@ func (c *Client) PayTripWithMoney(ctx context.Context, id TripCode) (int, error)
 func wrapError(err error) error {
 	var errs graphql.Errors
 	if errors.As(err, &errs) && len(errs) == 1 {
-		msg := errs[0].Message
-
-		switch {
-		case strings.Contains(msg, giraauth.ErrInternalServer.Error()): // sigh, graphql lib breaks errors
-			return giraauth.ErrInternalServer
-		case strings.Contains(msg, giraauth.ErrInvalidRefreshToken.Error()):
-			return giraauth.ErrInvalidRefreshToken
-		case strings.Contains(msg, tokenserver.ErrTokenFetch.Error()):
-			return tokenserver.ErrTokenFetch
-		case strings.Contains(msg, "record not found"):
-			// this happens when token is deleted from DB for some reason (maybe refresh failed)
-			// as graphql lib breaks any errors to strings, we have to check like this...
-			return giraauth.ErrInvalidRefreshToken
-		}
-
-		if err := convertTripError(msg); err != nil {
+		if err := convertTripError(errs[0].Message); err != nil {
 			return err
 		}
 	}
