@@ -201,53 +201,7 @@ func main() {
 	}()
 
 	// register middlewares and handlers
-	b.Use(middleware.Recover())
-	b.Use(s.checkUpdateIDMiddleware)
-	b.Use(s.addCustomContext)
-
-	b.Handle("/start", wrapHandler((*customContext).handleStart))
-	b.Handle("/login", wrapHandler((*customContext).handleLogin))
-	b.Handle(tele.OnText, wrapHandler((*customContext).handleText))
-
-	b.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
-	b.Handle("\f"+btnKeyTypeRetryDebug, wrapHandler((*customContext).handleDebugRetry), allowlist(*adminID))
-
-	authed := b.Group()
-	authed.Use(s.checkLoggedIn)
-
-	authed.Handle("/help", wrapHandler((*customContext).handleHelp))
-	authed.Handle("/status", wrapHandler((*customContext).handleStatus))
-	authed.Handle(tele.OnLocation, wrapHandler((*customContext).handleLocation))
-	authed.Handle("/rate", wrapHandler((*customContext).handleSendRateMsg))
-
-	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(*adminID))
-
-	authed.Handle(&btnMapLegacy, wrapHandler((*customContext).handleShowMapLegacy))
-	authed.Handle(&btnCancelMenuLegacy, wrapHandler((*customContext).handleShowMapLegacy))
-
-	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
-	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))
-	authed.Handle(&btnHelp, wrapHandler((*customContext).handleHelp))
-	authed.Handle(&btnFeedback, wrapHandler((*customContext).handleFeedback))
-
-	authed.Handle("\f"+btnKeyTypeStation, wrapHandler((*customContext).handleStation))
-	authed.Handle("\f"+btnKeyTypeBike, wrapHandler((*customContext).handleTapBike))
-	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler((*customContext).handleUnlockBike))
-	authed.Handle("\f"+btnKeyTypeCloseMenu, wrapHandler((*customContext).deleteCallbackMessageWithReply))
-	authed.Handle("\f"+btnKeyTypeCloseMenuKeepReply, wrapHandler((*customContext).deleteCallbackMessage))
-	authed.Handle("\f"+btnKeyTypeIgnore, wrapHandler((*customContext).respond))
-
-	authed.Handle("\f"+btnKeyTypeAddFav, wrapHandler((*customContext).handleAddFavorite))
-	authed.Handle("\f"+btnKeyTypeRemoveFav, wrapHandler((*customContext).handleRemoveFavorite))
-	authed.Handle("\f"+btnKeyTypeRenameFav, wrapHandler((*customContext).handleRenameFavorite))
-
-	authed.Handle("\f"+btnKeyTypeRateStar, wrapHandler((*customContext).handleRateStar))
-	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler((*customContext).handleRateAddText))
-	authed.Handle("\f"+btnKeyTypeRateCommentCancel, wrapHandler((*customContext).handleCancelAddComment))
-	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler((*customContext).handleRateSubmit))
-
-	authed.Handle("\f"+btnKeyTypePayPoints, wrapHandler((*customContext).handlePayPoints))
-	authed.Handle("\f"+btnKeyTypePayMoney, wrapHandler((*customContext).handlePayMoney))
+	setupHandlers(&s)
 
 	go s.refreshTokensWatcher()
 	s.loadActiveTrips()
@@ -708,13 +662,6 @@ func (t *tokenSource) Token() (*oauth2.Token, error) {
 	}
 
 	return newToken, nil
-}
-
-// wrapHandler wraps handler that accepts custom context to handler that accepts telebot context.
-func wrapHandler(f func(cc *customContext) error) func(tele.Context) error {
-	return func(c tele.Context) error {
-		return f(c.(*customContext))
-	}
 }
 
 func allowlist(chats ...int64) tele.MiddlewareFunc {

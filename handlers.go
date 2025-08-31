@@ -19,12 +19,115 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	tele "gopkg.in/telebot.v3"
+	"gopkg.in/telebot.v3/middleware"
 	"gorm.io/gorm/clause"
 
 	"github.com/ilyaluk/girabot/internal/gira"
 	"github.com/ilyaluk/girabot/internal/giraauth"
 	"github.com/ilyaluk/girabot/internal/tokenserver"
 )
+
+func setupHandlers(s *server) {
+	s.bot.Use(middleware.Recover())
+	s.bot.Use(s.checkUpdateIDMiddleware)
+	s.bot.Use(s.addCustomContext)
+
+	s.bot.Handle("/start", wrapHandler((*customContext).handleStart))
+	s.bot.Handle("/login", wrapHandler((*customContext).handleLogin))
+	s.bot.Handle(tele.OnText, wrapHandler((*customContext).handleText))
+
+	s.bot.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
+	s.bot.Handle("\f"+btnKeyTypeRetryDebug, wrapHandler((*customContext).handleDebugRetry), allowlist(*adminID))
+
+	authed := s.bot.Group()
+	authed.Use(s.checkLoggedIn)
+
+	authed.Handle("/help", wrapHandler((*customContext).handleHelp))
+	authed.Handle("/status", wrapHandler((*customContext).handleStatus))
+	authed.Handle(tele.OnLocation, wrapHandler((*customContext).handleLocation))
+	authed.Handle("/rate", wrapHandler((*customContext).handleSendRateMsg))
+
+	authed.Handle("/test", wrapHandler((*customContext).handleLocationTest), allowlist(*adminID))
+
+	authed.Handle(&btnMapLegacy, wrapHandler((*customContext).handleShowMapLegacy))
+	authed.Handle(&btnCancelMenuLegacy, wrapHandler((*customContext).handleShowMapLegacy))
+
+	authed.Handle(&btnFavorites, wrapHandler((*customContext).handleShowFavorites))
+	authed.Handle(&btnStatus, wrapHandler((*customContext).handleStatus))
+	authed.Handle(&btnHelp, wrapHandler((*customContext).handleHelp))
+	authed.Handle(&btnFeedback, wrapHandler((*customContext).handleFeedback))
+
+	authed.Handle("\f"+btnKeyTypeStation, wrapHandler((*customContext).handleStation))
+	authed.Handle("\f"+btnKeyTypeBike, wrapHandler((*customContext).handleTapBike))
+	authed.Handle("\f"+btnKeyTypeBikeUnlock, wrapHandler((*customContext).handleUnlockBike))
+	authed.Handle("\f"+btnKeyTypeCloseMenu, wrapHandler((*customContext).deleteCallbackMessageWithReply))
+	authed.Handle("\f"+btnKeyTypeCloseMenuKeepReply, wrapHandler((*customContext).deleteCallbackMessage))
+	authed.Handle("\f"+btnKeyTypeIgnore, wrapHandler((*customContext).respond))
+
+	authed.Handle("\f"+btnKeyTypeAddFav, wrapHandler((*customContext).handleAddFavorite))
+	authed.Handle("\f"+btnKeyTypeRemoveFav, wrapHandler((*customContext).handleRemoveFavorite))
+	authed.Handle("\f"+btnKeyTypeRenameFav, wrapHandler((*customContext).handleRenameFavorite))
+
+	authed.Handle("\f"+btnKeyTypeRateStar, wrapHandler((*customContext).handleRateStar))
+	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler((*customContext).handleRateAddText))
+	authed.Handle("\f"+btnKeyTypeRateCommentCancel, wrapHandler((*customContext).handleCancelAddComment))
+	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler((*customContext).handleRateSubmit))
+
+	authed.Handle("\f"+btnKeyTypePayPoints, wrapHandler((*customContext).handlePayPoints))
+	authed.Handle("\f"+btnKeyTypePayMoney, wrapHandler((*customContext).handlePayMoney))
+}
+
+// wrapHandler wraps handler that accepts custom context to handler that accepts telebot context.
+func wrapHandler(f func(cc *customContext) error) func(tele.Context) error {
+	return func(c tele.Context) error {
+		return f(c.(*customContext))
+	}
+}
+
+const (
+	btnKeyTypeStation    = "station"
+	btnKeyTypeBike       = "bike"
+	btnKeyTypeBikeUnlock = "unlock_bike"
+
+	btnKeyTypeCloseMenu          = "close_menu"
+	btnKeyTypeCloseMenuKeepReply = "close_menu_keep_reply"
+
+	btnKeyTypeAddFav    = "add_favorite"
+	btnKeyTypeRenameFav = "rename_favorite"
+	btnKeyTypeRemoveFav = "remove_favorite"
+
+	btnKeyTypeRateStar          = "rate_star"
+	btnKeyTypeRateAddText       = "rate_add_text"
+	btnKeyTypeRateCommentCancel = "rate_comment_cancel"
+	btnKeyTypeRateSubmit        = "rate_submit"
+
+	btnKeyTypePayPoints = "trip_pay_points"
+	btnKeyTypePayMoney  = "trip_pay_money"
+
+	btnKeyTypeRetryDebug = "retry_debug"
+
+	btnKeyTypeIgnore = "ignore"
+)
+
+var (
+	menu = &tele.ReplyMarkup{ResizeKeyboard: true}
+
+	btnLocation  = menu.Location("📍 Location")
+	btnMapLegacy = menu.Text("🗺️ Map")
+	btnFavorites = menu.Text("⭐️ Favorites")
+	btnStatus    = menu.Text("ℹ️ Status")
+	btnHelp      = menu.Text("❓ Help")
+	btnFeedback  = menu.Text("📝 Feedback")
+
+	btnCancelMenuLegacy = menu.Text("❌ Cancel")
+)
+
+func init() {
+	menu.Reply(
+		menu.Row(btnLocation, btnFavorites),
+		menu.Row(btnStatus, btnHelp, btnFeedback),
+	)
+}
 
 func (c *customContext) handleStart() error {
 	if err := c.Send(messageHello, tele.ModeMarkdown); err != nil {
@@ -247,51 +350,6 @@ func (c *customContext) handleStatus() error {
 		info.Bonus/500,
 		subscr,
 	), tele.ModeMarkdown)
-}
-
-const (
-	btnKeyTypeStation    = "station"
-	btnKeyTypeBike       = "bike"
-	btnKeyTypeBikeUnlock = "unlock_bike"
-
-	btnKeyTypeCloseMenu          = "close_menu"
-	btnKeyTypeCloseMenuKeepReply = "close_menu_keep_reply"
-
-	btnKeyTypeAddFav    = "add_favorite"
-	btnKeyTypeRenameFav = "rename_favorite"
-	btnKeyTypeRemoveFav = "remove_favorite"
-
-	btnKeyTypeRateStar          = "rate_star"
-	btnKeyTypeRateAddText       = "rate_add_text"
-	btnKeyTypeRateCommentCancel = "rate_comment_cancel"
-	btnKeyTypeRateSubmit        = "rate_submit"
-
-	btnKeyTypePayPoints = "trip_pay_points"
-	btnKeyTypePayMoney  = "trip_pay_money"
-
-	btnKeyTypeRetryDebug = "retry_debug"
-
-	btnKeyTypeIgnore = "ignore"
-)
-
-var (
-	menu = &tele.ReplyMarkup{ResizeKeyboard: true}
-
-	btnLocation  = menu.Location("📍 Location")
-	btnMapLegacy = menu.Text("🗺️ Map")
-	btnFavorites = menu.Text("⭐️ Favorites")
-	btnStatus    = menu.Text("ℹ️ Status")
-	btnHelp      = menu.Text("❓ Help")
-	btnFeedback  = menu.Text("📝 Feedback")
-
-	btnCancelMenuLegacy = menu.Text("❌ Cancel")
-)
-
-func init() {
-	menu.Reply(
-		menu.Row(btnLocation, btnFavorites),
-		menu.Row(btnStatus, btnHelp, btnFeedback),
-	)
 }
 
 func (c *customContext) handleLocationTest() error {
