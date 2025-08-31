@@ -53,6 +53,9 @@ type User struct {
 	CurrentTripRating       gira.TripRating `gorm:"serializer:json"`
 	CurrentTripRateAwaiting bool
 
+	// for sending the bike message again after trip interval limit
+	LastSelectedBikeCb string
+
 	FinishedTrips int
 
 	SentDonateMessage bool
@@ -433,7 +436,7 @@ func (s *server) onError(err error, c tele.Context) {
 			trips, err := cc.gira.GetTripHistory(cc, 1, 1)
 			if err == nil && len(trips) == 1 {
 				t := trips[0].EndDate
-				delta := time.Now().Sub(t).Truncate(time.Second)
+				delta := time.Since(t).Truncate(time.Second)
 				// check for reasonable time for previously ended trip.
 				if delta < time.Hour {
 					prettyErr = fmt.Sprintf("You can't start a new trip so soon. Last trip ended %v ago.\n", delta)
@@ -442,11 +445,18 @@ func (s *server) onError(err error, c tele.Context) {
 						wait := 5*time.Minute - delta + time.Second
 						prettyErr += fmt.Sprintf("Please wait %v and try again.\n\nI'll notify you once this passes!", wait)
 						time.AfterFunc(wait, func() {
+							// new context, previous one might be already expired
 							cc, cancel := s.newCustomContext(c, &u)
 							defer cancel()
 
 							if err := cc.Send("You can start a trip now. Enjoy your ride! 🚲"); err != nil {
 								log.Println("bot: error sending trip interval message:", err)
+								return
+							}
+
+							if err := cc.sendBikeMessage(u.LastSelectedBikeCb); err != nil {
+								log.Println("bot: error sending bike message after trip interval:", err)
+								return
 							}
 						})
 					} else {

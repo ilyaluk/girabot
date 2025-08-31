@@ -180,7 +180,7 @@ func (b Bike) CallbackData() string {
 // BikeFromCallbackData parses the callback data and returns the bike.
 func BikeFromCallbackData(data string) (b Bike, err error) {
 	parts := strings.Split(data, "|")
-	if len(parts) != 4 {
+	if len(parts) != 4 || len(data) > 1024 {
 		return Bike{}, fmt.Errorf("invalid callback data: %s", data)
 	}
 

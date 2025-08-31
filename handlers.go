@@ -640,10 +640,17 @@ func (c *customContext) handleTapBike() error {
 		return c.Send("No callback")
 	}
 
-	bike, err := gira.BikeFromCallbackData(cb.Data)
+	return c.sendBikeMessage(cb.Data)
+}
+
+func (c *customContext) sendBikeMessage(bikeCallback string) error {
+	bike, err := gira.BikeFromCallbackData(bikeCallback)
 	if err != nil {
 		return err
 	}
+
+	// save for re-sending bike after trip interval limit
+	c.user.LastSelectedBikeCb = bikeCallback
 
 	btnsRow := []tele.InlineButton{
 		{
