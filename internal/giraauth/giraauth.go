@@ -133,10 +133,8 @@ func (c Client) apiCall(ctx context.Context, method, api string, headers http.He
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Gira/3.4.3 (Android 34)")
 
-	if headers != nil {
-		for k, v := range headers {
-			req.Header.Set(k, v[0])
-		}
+	for k, v := range headers {
+		req.Header.Set(k, v[0])
 	}
 
 	resp, err := c.httpc.Do(req)
@@ -153,7 +151,9 @@ func (c Client) apiCall(ctx context.Context, method, api string, headers http.He
 		return ErrInternalServer
 	}
 
-	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "Invalid refresh token") {
+	if resp.StatusCode == http.StatusBadRequest &&
+		(strings.Contains(string(body), "Invalid refresh token") ||
+			strings.Contains(string(body), "Expired refresh token")) {
 		return ErrInvalidRefreshToken
 	}
 
