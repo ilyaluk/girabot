@@ -169,11 +169,18 @@ func main() {
 		}
 	}()
 
+	tgHTTPC := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 100,
+		},
+	}
+
 	// create bot
 	b, err := tele.NewBot(tele.Settings{
 		Token:   os.Getenv("TOKEN"),
 		Poller:  webhook,
 		OnError: s.onError,
+		Client:  tgHTTPC,
 	})
 	if err != nil {
 		log.Fatal(err)
