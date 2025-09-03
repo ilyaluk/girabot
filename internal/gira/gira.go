@@ -363,9 +363,12 @@ func (c *Client) PayTripWithMoney(ctx context.Context, id TripCode) (int, error)
 
 func wrapError(err error) error {
 	var errs graphql.Errors
-	if errors.As(err, &errs) && len(errs) == 1 {
-		if err := convertTripError(errs[0].Message); err != nil {
-			return err
+	if errors.As(err, &errs) {
+		// if there is a gira backend error, ignore all others added by graphql lib
+		for _, err := range errs {
+			if err := convertTripError(err.Message); err != nil {
+				return err
+			}
 		}
 	}
 	return err
