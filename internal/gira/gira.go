@@ -56,7 +56,7 @@ func (c *Client) GetClientInfo(ctx context.Context) (ClientInfo, error) {
 	}
 
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return ClientInfo{}, wrapError(err)
+		return ClientInfo{}, unwrapError(err)
 	}
 
 	if len(query.Client) != 1 {
@@ -89,7 +89,7 @@ func (c *Client) getStationsNoCache(ctx context.Context) ([]Station, error) {
 		GetStations []innerStation
 	}
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return nil, wrapError(err)
+		return nil, unwrapError(err)
 	}
 
 	res := make([]Station, len(query.GetStations))
@@ -139,7 +139,7 @@ func (c *Client) GetStationDocks(ctx context.Context, id StationSerial) (Docks, 
 		"input": string(id),
 	})
 	if err != nil {
-		return nil, wrapError(err)
+		return nil, unwrapError(err)
 	}
 
 	res := make(Docks, 0, len(query.GetDocks))
@@ -184,7 +184,7 @@ func (c *Client) ReserveBike(ctx context.Context, id BikeSerial) (bool, error) {
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"input": string(id),
 	}); err != nil {
-		return false, wrapError(err)
+		return false, unwrapError(err)
 	}
 
 	return mutation.ReserveBike, nil
@@ -196,7 +196,7 @@ func (c *Client) CancelBikeReserve(ctx context.Context) (bool, error) {
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, nil); err != nil {
-		return false, wrapError(err)
+		return false, unwrapError(err)
 	}
 
 	return mutation.CancelBikeReserve, nil
@@ -208,7 +208,7 @@ func (c *Client) StartTrip(ctx context.Context) (bool, error) {
 	}
 
 	if err := c.c.Mutate(ctx, &mutation, nil); err != nil {
-		return false, wrapError(err)
+		return false, unwrapError(err)
 	}
 
 	return mutation.StartTrip, nil
@@ -220,7 +220,7 @@ func (c *Client) GetActiveTrip(ctx context.Context) (Trip, error) {
 	}
 
 	if err := c.c.Query(ctx, &query, nil); err != nil {
-		return Trip{}, wrapError(err)
+		return Trip{}, unwrapError(err)
 	}
 
 	if query.ActiveTrip == nil {
@@ -237,7 +237,7 @@ func (c *Client) GetTrip(ctx context.Context, code TripCode) (Trip, error) {
 	if err := c.c.Query(ctx, &query, map[string]any{
 		"input": string(code),
 	}); err != nil {
-		return Trip{}, wrapError(err)
+		return Trip{}, unwrapError(err)
 	}
 
 	if len(query.Trip) == 0 {
@@ -269,7 +269,7 @@ func (c *Client) GetTripHistory(ctx context.Context, page, pageSize int) ([]Trip
 			PageSize: int32(pageSize),
 		},
 	}); err != nil {
-		return nil, wrapError(err)
+		return nil, unwrapError(err)
 	}
 
 	res := make([]Trip, len(query.TripHistory))
@@ -291,7 +291,7 @@ func (c *Client) GetUnratedTrips(ctx context.Context, page, pageSize int) ([]Tri
 			PageSize: int32(pageSize),
 		},
 	}); err != nil {
-		return nil, wrapError(err)
+		return nil, unwrapError(err)
 	}
 
 	res := make([]Trip, len(query.UnratedTrips))
@@ -327,7 +327,7 @@ func (c *Client) RateTrip(ctx context.Context, code TripCode, rating TripRating)
 			Description: rating.Comment,
 		},
 	}); err != nil {
-		return false, wrapError(err)
+		return false, unwrapError(err)
 	}
 
 	return mutation.RateTrip, nil
@@ -341,7 +341,7 @@ func (c *Client) PayTripWithPoints(ctx context.Context, id TripCode) (int, error
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"input": string(id),
 	}); err != nil {
-		return 0, wrapError(err)
+		return 0, unwrapError(err)
 	}
 
 	return mutation.TripPay, nil
@@ -355,26 +355,31 @@ func (c *Client) PayTripWithMoney(ctx context.Context, id TripCode) (int, error)
 	if err := c.c.Mutate(ctx, &mutation, map[string]any{
 		"input": string(id),
 	}); err != nil {
-		return 0, wrapError(err)
+		return 0, unwrapError(err)
 	}
 
 	return mutation.TripPay, nil
 }
 
-func wrapError(err error) error {
+func unwrapError(err error) error {
 	var errs graphql.Errors
 	if errors.As(err, &errs) {
-		// if there is a gira backend error, ignore all others added by graphql lib
 		for _, err := range errs {
-			if err := convertTripError(err.Message); err != nil {
-				return err
+			// graphql library wraps http bad request errors into that type,
+			// and body is accessible only on concrete type and not in .Error()
+			var nerErr graphql.NetworkError
+			if errors.As(err.Unwrap(), &nerErr) {
+				// if there is a gira backend error, ignore all others added by graphql lib
+				if giraErr := parseTripErrorMessage(nerErr.Body()); giraErr != nil {
+					return giraErr
+				}
 			}
 		}
 	}
 	return err
 }
 
-func convertTripError(msg string) error {
+func parseTripErrorMessage(msg string) error {
 	switch {
 	case strings.Contains(msg, "already_has_active_trip"):
 		return ErrAlreadyHasActiveTrip
