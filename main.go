@@ -23,6 +23,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/ilyaluk/girabot/internal/emeltls"
 	"github.com/ilyaluk/girabot/internal/gira"
 	"github.com/ilyaluk/girabot/internal/giraauth"
 	"github.com/ilyaluk/girabot/internal/tokenserver"
@@ -123,7 +124,7 @@ func main() {
 	flag.Parse()
 
 	s := server{
-		auth:               giraauth.New(http.DefaultClient),
+		auth:               giraauth.New(&http.Client{Transport: emeltls.Transport()}),
 		tokenSources:       map[int64]*tokenSource{},
 		activeTripsCancels: map[int64]context.CancelFunc{},
 	}
@@ -301,7 +302,7 @@ func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, cont
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
 	ts := s.getTokenSource(u.ID)
-	oauthC := oauth2.NewClient(ctx, ts)
+	oauthC := &http.Client{Transport: &oauth2.Transport{Source: ts, Base: emeltls.Transport()}}
 	fbC := newFbTokenClient(oauthC.Transport, ts)
 	girac := gira.New(fbC)
 

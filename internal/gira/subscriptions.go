@@ -10,6 +10,7 @@ import (
 
 	"github.com/hasura/go-graphql-client"
 	"github.com/hasura/go-graphql-client/pkg/jsonutil"
+	"github.com/ilyaluk/girabot/internal/emeltls"
 	"github.com/ilyaluk/girabot/internal/retryablehttp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -209,6 +210,7 @@ func startOneSubscription(ctx context.Context, query any, token string, handler 
 
 	c := graphql.NewSubscriptionClient("wss://c2g091p01.emel.pt/ws/graphql").
 		WithWebSocketOptions(graphql.WebsocketOptions{
+			HTTPClient: &http.Client{Transport: emeltls.Transport()},
 			HTTPHeader: http.Header{
 				"User-Agent": []string{"Gira/3.4.3 (Android 34)"},
 			},

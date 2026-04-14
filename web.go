@@ -19,6 +19,7 @@ import (
 	"golang.org/x/oauth2"
 	tele "gopkg.in/telebot.v3"
 
+	"github.com/ilyaluk/girabot/internal/emeltls"
 	"github.com/ilyaluk/girabot/internal/gira"
 )
 
@@ -42,7 +43,7 @@ func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 	s.db.First(&user, uid)
 
 	ts := s.getTokenSource(uid)
-	oauthC := oauth2.NewClient(r.Context(), ts)
+	oauthC := &http.Client{Transport: &oauth2.Transport{Source: ts, Base: emeltls.Transport()}}
 	fbC := newFbTokenClient(oauthC.Transport, ts)
 	girac := gira.New(fbC)
 

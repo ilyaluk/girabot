@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/ilyaluk/girabot/internal/emeltls"
 	"github.com/ilyaluk/girabot/internal/giraauth"
 	"github.com/ilyaluk/girabot/internal/tokencrypto"
 	"github.com/ilyaluk/girabot/internal/tokenserver"
@@ -43,7 +44,7 @@ func main() {
 
 	s := &server{
 		db:   db,
-		auth: giraauth.New(http.DefaultClient),
+		auth: giraauth.New(&http.Client{Transport: emeltls.Transport()}),
 	}
 
 	go s.cleanupTokens()
