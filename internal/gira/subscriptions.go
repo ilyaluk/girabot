@@ -156,7 +156,7 @@ func startSubscription[T any](ctx context.Context, query any, ts oauth2.TokenSou
 	handler := func(msg []byte, err error) error {
 		var val T
 		if err != nil {
-			if retryablehttp.IsInvalidOperationError([]byte(err.Error())) {
+			if retryablehttp.IsRetryableGraphQLError([]byte(err.Error())) {
 				subInvalidErrsCnt.Inc()
 				// backend regularly returns this error, retry it
 				log.Println("subscription error was INVALID_OPERATION")

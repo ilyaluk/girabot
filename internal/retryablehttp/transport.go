@@ -117,8 +117,8 @@ func doRetry(resp *http.Response, respBytes []byte) bool {
 		return true
 	}
 
-	// sometimes backend just returns shitty INVALID_OPERATION error, retry it
-	if IsInvalidOperationError(respBytes) {
+	// sometimes backend returns transient GraphQL errors, retry them
+	if IsRetryableGraphQLError(respBytes) {
 		return true
 	}
 
@@ -126,7 +126,17 @@ func doRetry(resp *http.Response, respBytes []byte) bool {
 	return false
 }
 
-func IsInvalidOperationError(respBytes []byte) bool {
+// retryableGraphQLCodes are backend error codes that are transient and worth
+// retrying: INVALID_OPERATION is regularly returned spuriously, while
+// REDIS_CONNECTION / TYPE_INITIALIZATION indicate transient backend infra
+// failures (returned as a 400).
+var retryableGraphQLCodes = map[string]bool{
+	"INVALID_OPERATION":   true,
+	"REDIS_CONNECTION":    true,
+	"TYPE_INITIALIZATION": true,
+}
+
+func IsRetryableGraphQLError(respBytes []byte) bool {
 	var rv struct {
 		Errors graphql.Errors
 	}
@@ -137,18 +147,23 @@ func IsInvalidOperationError(respBytes []byte) bool {
 		return false
 	}
 
-	if len(rv.Errors) == 1 {
-		if ext := rv.Errors[0].Extensions; ext != nil {
-			code, ok := ext["code"].(string)
-			if ok && code == "INVALID_OPERATION" {
-				//log.Println("retry: invalid operation error")
-				return true
-			}
+	if len(rv.Errors) != 1 {
+		return false
+	}
 
-			// Jesus, sometimes it's an array
-			codes, ok := ext["codes"].([]any)
-			if ok && len(codes) > 0 && codes[0] == "INVALID_OPERATION" {
-				//log.Println("retry: invalid operation error")
+	ext := rv.Errors[0].Extensions
+	if ext == nil {
+		return false
+	}
+
+	if code, ok := ext["code"].(string); ok && retryableGraphQLCodes[code] {
+		return true
+	}
+
+	// Jesus, sometimes it's an array
+	if codes, ok := ext["codes"].([]any); ok {
+		for _, c := range codes {
+			if code, ok := c.(string); ok && retryableGraphQLCodes[code] {
 				return true
 			}
 		}
