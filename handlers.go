@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"golang.org/x/oauth2"
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 	"gorm.io/gorm/clause"
@@ -130,11 +132,107 @@ func init() {
 }
 
 func (c *customContext) handleStart() error {
+	// A /start deep link can carry credentials, so that a user doesn't have to
+	// type them at all. See parseLoginPayload for the format.
+	email, pwd, err := parseLoginPayload(c.Message().Payload)
+	if err == nil {
+		return c.handleDeepLinkLogin(email, pwd)
+	}
+
+	badLink := !errors.Is(err, errNotLoginPayload)
+	if badLink {
+		log.Println("bot: bad login deep link:", err)
+		// The payload might still hold a password, don't keep it in the chat.
+		if err := c.Delete(); err != nil {
+			return err
+		}
+	}
+
 	if err := c.Send(messageHello, tele.ModeMarkdown); err != nil {
 		return err
 	}
 
+	if badLink {
+		if err := c.Send("⚠️ The login link you used is malformed, let's log in the manual way."); err != nil {
+			return err
+		}
+	}
+
 	return c.handleLogin()
+}
+
+// loginPayloadPrefix marks a /start deep link payload that carries credentials.
+// It's a single character on purpose: Telegram passes at most 64 payload
+// characters, and base64 of "email:password" eats through them fast.
+const loginPayloadPrefix = "L"
+
+var errNotLoginPayload = errors.New("payload is not a login one")
+
+// parseLoginPayload decodes credentials out of a /start deep link payload of
+// the form "L<base64url(email:password)>". Telegram only allows A-Z, a-z, 0-9,
+// '_' and '-' in a payload, hence base64url.
+func parseLoginPayload(payload string) (email, password string, err error) {
+	enc, ok := strings.CutPrefix(payload, loginPayloadPrefix)
+	if !ok {
+		return "", "", errNotLoginPayload
+	}
+
+	// Padding is not allowed in a payload, but be lenient to link generators.
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(enc, "="))
+	if err != nil {
+		return "", "", fmt.Errorf("decoding payload: %w", err)
+	}
+
+	email, password, ok = strings.Cut(string(raw), ":")
+	if !ok {
+		return "", "", errors.New("payload has no email/password separator")
+	}
+	if password == "" {
+		return "", "", errors.New("payload has empty password")
+	}
+
+	// Same check as for a manually sent email.
+	emailParsed, err := mail.ParseAddress(email)
+	if err != nil || emailParsed.Address != email {
+		return "", "", errors.New("payload has invalid email")
+	}
+
+	return email, password, nil
+}
+
+// handleDeepLinkLogin logs the user in with credentials from a /start deep
+// link, falling back to the manual flow if Gira does not like them.
+func (c *customContext) handleDeepLinkLogin(email, password string) error {
+	// The link sits in the chat history and holds the password, so drop it
+	// right away, same as we do with manually sent credentials.
+	if err := c.Delete(); err != nil {
+		return err
+	}
+
+	// Someone re-logging in via a link does not need the intro again.
+	if c.user.State < UserStateLoggedIn {
+		if err := c.Send(messageHello, tele.ModeMarkdown); err != nil {
+			return err
+		}
+	}
+
+	m, err := c.Bot().Send(c.Recipient(), "Logging in...")
+	if err != nil {
+		return err
+	}
+
+	tok, err := c.s.auth.Login(c, email, password)
+	if errors.Is(err, giraauth.ErrInvalidEmail) || errors.Is(err, giraauth.ErrInvalidCredentials) {
+		if _, err := c.Bot().Edit(m, "Gira rejected the credentials from the link, let's log in the manual way."); err != nil {
+			return err
+		}
+		return c.handleLogin()
+	}
+	if err != nil {
+		return err
+	}
+
+	return c.finishLogin(tok, m)
 }
 
 func (c *customContext) handleLogin() error {
@@ -144,6 +242,32 @@ func (c *customContext) handleLogin() error {
 
 	c.user.State = UserStateWaitingForEmail
 	return nil
+}
+
+// finishLogin stores a fresh token, marks the user as logged in and greets
+// them. progress is a "logging in" message, removed once the status is sent.
+func (c *customContext) finishLogin(tok *oauth2.Token, progress tele.Editable) error {
+	dbToken := Token{
+		ID:    c.user.ID,
+		Token: tok,
+	}
+	if err := c.s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&dbToken).Error; err != nil {
+		return err
+	}
+
+	if err := c.handleStatus(); err != nil {
+		return err
+	}
+
+	if err := c.Bot().Delete(progress); err != nil {
+		return err
+	}
+
+	c.user.Email = ""
+	c.user.EmailMessageID = 0
+	c.user.State = UserStateLoggedIn
+
+	return c.handleHelp()
 }
 
 func (c *customContext) handleText() error {
@@ -212,27 +336,7 @@ func (c *customContext) handleText() error {
 			return err
 		}
 
-		dbToken := Token{
-			ID:    c.user.ID,
-			Token: tok,
-		}
-		if err := c.s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&dbToken).Error; err != nil {
-			return err
-		}
-
-		if err := c.handleStatus(); err != nil {
-			return err
-		}
-
-		if err := c.Bot().Delete(m); err != nil {
-			return err
-		}
-
-		c.user.Email = ""
-		c.user.EmailMessageID = 0
-		c.user.State = UserStateLoggedIn
-
-		return c.handleHelp()
+		return c.finishLogin(tok, m)
 	case UserStateLoggedIn:
 		return c.handleLoggedInText()
 	case UserStateWaitingForFavName:

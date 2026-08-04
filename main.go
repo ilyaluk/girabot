@@ -525,6 +525,10 @@ func getAction(c tele.Context, u User) string {
 	if u.State == UserStateWaitingForPassword {
 		return "<password>"
 	}
+	// a /start deep link payload may hold credentials
+	if c.Message().Payload != "" && strings.HasPrefix(c.Message().Text, "/start") {
+		return "/start <payload>"
+	}
 
 	return c.Text()
 }
