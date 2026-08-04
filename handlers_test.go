@@ -40,10 +40,11 @@ func TestParseLoginPayload(t *testing.T) {
 			password: "hun:ter2",
 		},
 		{
+			// 25 bytes, so the encoding actually pads
 			name:     "padded base64",
-			payload:  loginPayloadPrefix + base64.URLEncoding.EncodeToString([]byte("user@example.com:hunter2")),
+			payload:  loginPayloadPrefix + base64.URLEncoding.EncodeToString([]byte("user@example.com:hunter22")),
 			email:    "user@example.com",
-			password: "hunter2",
+			password: "hunter22",
 		},
 	}
 

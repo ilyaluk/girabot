@@ -37,7 +37,7 @@ func setupHandlers(s *server) {
 
 	s.bot.Handle("/start", wrapHandler((*customContext).handleStart))
 	s.bot.Handle("/login", wrapHandler((*customContext).handleLogin))
-	s.bot.Handle("/loginlink", wrapHandler((*customContext).handleLoginLink))
+	s.bot.Handle(cmdLoginLink, wrapHandler((*customContext).handleLoginLink))
 	s.bot.Handle(tele.OnText, wrapHandler((*customContext).handleText))
 
 	s.bot.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
@@ -111,6 +111,9 @@ const (
 	btnKeyTypeRetryDebug = "retry_debug"
 
 	btnKeyTypeIgnore = "ignore"
+
+	// cmdLoginLink is also matched in getAction to keep credentials out of logs
+	cmdLoginLink = "/loginlink"
 )
 
 var (
@@ -134,8 +137,7 @@ func init() {
 }
 
 func (c *customContext) handleStart() error {
-	// A /start deep link can carry credentials, so that a user doesn't have to
-	// type them at all. See parseLoginPayload for the format.
+	// a deep link can carry credentials, see parseLoginPayload for the format
 	email, pwd, err := parseLoginPayload(c.Message().Payload)
 	if err == nil {
 		return c.handleDeepLinkLogin(email, pwd)
@@ -162,20 +164,16 @@ func (c *customContext) handleStart() error {
 }
 
 const (
-	// loginPayloadPrefix marks a /start deep link payload that carries
-	// credentials. It's a single character on purpose: Telegram passes at most
-	// maxStartPayloadLen characters, and base64 of "email:password" eats
-	// through them fast.
+	// loginPayloadPrefix marks a payload that carries credentials. Single
+	// character, as base64 of "email:password" eats the budget below fast.
 	loginPayloadPrefix = "L"
-	// maxStartPayloadLen is the payload length limit Telegram documents for
-	// deep links.
+	// maxStartPayloadLen is the deep link payload limit Telegram documents
 	maxStartPayloadLen = 64
 )
 
 var errNotLoginPayload = errors.New("payload is not a login one")
 
-// makeLoginPayload encodes credentials into a /start deep link payload,
-// see parseLoginPayload for the format.
+// makeLoginPayload encodes credentials into a deep link payload.
 func makeLoginPayload(email, password string) (string, error) {
 	payload := loginPayloadPrefix + base64.RawURLEncoding.EncodeToString([]byte(email+":"+password))
 	if len(payload) > maxStartPayloadLen {
@@ -194,9 +192,9 @@ var maxLoginLinkCredsLen = func() int {
 	return n
 }()
 
-// parseLoginPayload decodes credentials out of a /start deep link payload of
-// the form "L<base64url(email:password)>". Telegram only allows A-Z, a-z, 0-9,
-// '_' and '-' in a payload, hence base64url.
+// parseLoginPayload decodes credentials out of a payload of the form
+// "L<base64url(email:password)>". Telegram only passes A-Z, a-z, 0-9, '_' and
+// '-' through a deep link, hence base64url.
 func parseLoginPayload(payload string) (email, password string, err error) {
 	enc, ok := strings.CutPrefix(payload, loginPayloadPrefix)
 	if !ok {
@@ -266,7 +264,6 @@ func (c *customContext) handleLoginLink() error {
 		return c.Send(messageLoginLinkUsage, tele.ModeMarkdown)
 	}
 
-	// The command holds a password, don't keep it in the chat history.
 	c.tryDeleteCredentials()
 
 	payload, err := makeLoginPayload(email, pwd)
@@ -275,26 +272,27 @@ func (c *customContext) handleLoginLink() error {
 		return c.Send(fmt.Sprintf(
 			"Email and password are too long for a Telegram deep link: "+
 				"they have to fit into %d characters together, yours take %d. 😔",
+			// the limit is on "email:password", so the separator is not the user's to spend
 			maxLoginLinkCredsLen-1, len(email)+len(pwd),
 		))
 	}
 
+	// A payload can't hold a plaintext email, so an extra query parameter
+	// labels the link for a human: clients ignore the ones they don't know.
+	// Not a #fragment, which the docs call ignored, but tdesktop chokes on.
 	// No markdown: a payload may contain '_', which it would eat as italics.
 	return c.Send(fmt.Sprintf(
 		"🔗 Here's a login link for %s:\n\n"+
-			"https://t.me/%s?start=%s\n\n"+
+			"https://t.me/%s?start=%s&email=%s\n\n"+
 			"Whoever opens it gets logged in as this account, so treat it like the password itself. "+
 			"Delete this message once you've shared or saved the link.",
-		email, c.Bot().Me.Username, payload,
+		email, c.Bot().Me.Username, payload, email,
 	), tele.NoPreview)
 }
 
-// handleDeepLinkLogin logs the user in with credentials from a /start deep
-// link, falling back to the manual flow if Gira does not like them.
+// handleDeepLinkLogin logs the user in with credentials from a /start deep link.
 func (c *customContext) handleDeepLinkLogin(email, password string) error {
-	// Clients hide the payload of a deep link (they show a bare "/start"), but
-	// the message still carries it, so drop it as we do with manually sent
-	// credentials.
+	// Clients hide the payload (they show a bare "/start"), but it's still there.
 	c.tryDeleteCredentials()
 
 	// Someone re-logging in via a link does not need the intro again.
@@ -341,6 +339,13 @@ func (c *customContext) handleLogin() error {
 // finishLogin stores a fresh token, marks the user as logged in and greets
 // them. progress is a "logging in" message, removed once the status is sent.
 func (c *customContext) finishLogin(tok *oauth2.Token, progress tele.Editable) error {
+	// Only a login that skipped handleLogin, which resets the state, can find
+	// the user logged in: a deep link swapping accounts. Spare them the help.
+	relogin := c.user.State >= UserStateLoggedIn
+
+	// the ID is dropped below, so this is the last chance to delete the message
+	c.tryDeleteEmail()
+
 	dbToken := Token{
 		ID:    c.user.ID,
 		Token: tok,
@@ -361,6 +366,9 @@ func (c *customContext) finishLogin(tok *oauth2.Token, progress tele.Editable) e
 	c.user.EmailMessageID = 0
 	c.user.State = UserStateLoggedIn
 
+	if relogin {
+		return nil
+	}
 	return c.handleHelp()
 }
 
@@ -371,7 +379,6 @@ func (c *customContext) handleText() error {
 	case UserStateWaitingForEmail:
 		// A user might send both credentials at once, e.g. as two lines.
 		if email, pwd, ok := splitCredentials(c.Text()); ok {
-			// The message holds a password, don't keep it in the chat history.
 			c.tryDeleteCredentials()
 			return c.loginWithCredentials(email, pwd)
 		}
@@ -405,12 +412,8 @@ func (c *customContext) handleText() error {
 				return err
 			}
 
-			if err := c.deleteMessage(c.user.EmailMessageID); err != nil {
-				return err
-			}
-			if err := c.Delete(); err != nil {
-				return err
-			}
+			c.tryDeleteEmail()
+			c.tryDeleteCredentials()
 
 			return c.handleLogin()
 		}
@@ -423,18 +426,14 @@ func (c *customContext) handleText() error {
 				return err
 			}
 
-			return c.Delete()
+			c.tryDeleteCredentials()
+			return nil
 		}
 		if err != nil {
 			return err
 		}
 
-		if err := c.deleteMessage(c.user.EmailMessageID); err != nil {
-			return err
-		}
-		if err := c.Delete(); err != nil {
-			return err
-		}
+		c.tryDeleteCredentials()
 
 		return c.finishLogin(tok, m)
 	case UserStateLoggedIn:
@@ -472,13 +471,21 @@ func (c *customContext) handleText() error {
 	}
 }
 
-// tryDeleteCredentials removes the current message, which is expected to hold
-// credentials. Keeping the chat clean is not worth failing a login over, so an
-// error is only logged: the message might be gone already, or too old to
-// delete.
+// tryDeleteCredentials removes the current message, which holds credentials.
+// A message too old or already gone is not worth failing a login over.
 func (c *customContext) tryDeleteCredentials() {
 	if err := c.Delete(); err != nil {
 		log.Println("bot: error deleting message with credentials:", err)
+	}
+}
+
+// tryDeleteEmail removes the remembered message with the user's email, if any.
+func (c *customContext) tryDeleteEmail() {
+	if c.user.EmailMessageID == 0 {
+		return
+	}
+	if err := c.deleteMessage(c.user.EmailMessageID); err != nil {
+		log.Println("bot: error deleting message with email:", err)
 	}
 }
 

@@ -530,8 +530,12 @@ func getAction(c tele.Context, u User) string {
 		return "/start <payload>"
 	}
 	// /loginlink arguments are credentials
-	if strings.HasPrefix(c.Text(), "/loginlink") && commandArgs(c.Text()) != "" {
-		return "/loginlink <credentials>"
+	if strings.HasPrefix(c.Text(), cmdLoginLink) && commandArgs(c.Text()) != "" {
+		return cmdLoginLink + " <credentials>"
+	}
+	// a pasted email/password pair can arrive in any state
+	if _, _, ok := splitCredentials(c.Text()); ok {
+		return "<credentials>"
 	}
 
 	return c.Text()
