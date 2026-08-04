@@ -24,7 +24,7 @@ That sounds scary, but I won't save your credentials, pinky promise.
 I'll only use them to log in to Gira API and fetch the access token, which I will store and use to access Gira API on your behalf.
 Password will not be stored in my database, and I'll forget email and password right after login.
 
-Please send me your email.
+Please send me your email. If you prefer, send email and password at once, on two separate lines.
 `
 
 const messagePassword = `

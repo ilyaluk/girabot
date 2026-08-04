@@ -309,6 +309,12 @@ func (c *customContext) handleDeepLinkLogin(email, password string) error {
 		}
 	}
 
+	return c.loginWithCredentials(email, password)
+}
+
+// loginWithCredentials logs the user in with credentials that arrived in one
+// go, and falls back to the manual flow if Gira does not like them.
+func (c *customContext) loginWithCredentials(email, password string) error {
 	m, err := c.Bot().Send(c.Recipient(), "Logging in...")
 	if err != nil {
 		return err
@@ -316,7 +322,7 @@ func (c *customContext) handleDeepLinkLogin(email, password string) error {
 
 	tok, err := c.s.auth.Login(c, email, password)
 	if errors.Is(err, giraauth.ErrInvalidEmail) || errors.Is(err, giraauth.ErrInvalidCredentials) {
-		if _, err := c.Bot().Edit(m, "Gira rejected the credentials from the link, let's log in the manual way."); err != nil {
+		if _, err := c.Bot().Edit(m, "Gira rejected these credentials, let's log in the manual way."); err != nil {
 			return err
 		}
 		return c.handleLogin()
@@ -368,9 +374,17 @@ func (c *customContext) handleText() error {
 	case UserStateNone:
 		return c.handleStart()
 	case UserStateWaitingForEmail:
+		// A user might send both credentials at once, e.g. as two lines.
+		if email, pwd, ok := splitCredentials(c.Text()); ok {
+			// The message holds a password, don't keep it in the chat history.
+			if err := c.Delete(); err != nil {
+				return err
+			}
+			return c.loginWithCredentials(email, pwd)
+		}
+
 		email := c.Text()
-		emailParsed, err := mail.ParseAddress(email)
-		if err != nil || emailParsed.Address != email {
+		if !validEmail(email) {
 			if err := c.Send("This does not look like valid email, please try again."); err != nil {
 				return err
 			}
