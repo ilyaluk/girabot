@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -66,25 +67,83 @@ func TestParseLoginPayload(t *testing.T) {
 	}
 }
 
-// TestLoginPayloadFits documents how many credential characters fit into the
-// 64 characters of payload Telegram passes through.
-func TestLoginPayloadFits(t *testing.T) {
-	const maxPayload = 64
+func TestMakeLoginPayload(t *testing.T) {
+	const email, password = "user@example.com", "hunter2"
 
-	creds := "someone.longish@example.com:correcthorse"
-	payload := loginPayloadPrefix + base64.RawURLEncoding.EncodeToString([]byte(creds))
-	if len(payload) > maxPayload {
-		t.Fatalf("payload of %d chars for %d chars of credentials does not fit", len(payload), len(creds))
+	payload, err := makeLoginPayload(email, password)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(payload) > maxStartPayloadLen {
+		t.Errorf("payload %q is %d characters long", payload, len(payload))
 	}
 
-	// The longest "email:password" that still fits.
-	fits := 0
-	for n := 1; n <= 100; n++ {
-		if len(loginPayloadPrefix)+base64.RawURLEncoding.EncodedLen(n) <= maxPayload {
-			fits = n
+	gotEmail, gotPassword, err := parseLoginPayload(payload)
+	if err != nil {
+		t.Fatalf("parsing back %q: %v", payload, err)
+	}
+	if gotEmail != email || gotPassword != password {
+		t.Errorf("round trip gave %q/%q, want %q/%q", gotEmail, gotPassword, email, password)
+	}
+
+	if maxLoginLinkCredsLen != 47 {
+		t.Errorf("expected 47 characters of credentials to fit, got %d", maxLoginLinkCredsLen)
+	}
+
+	// Credentials just at the limit fit, one character more doesn't.
+	longest := strings.Repeat("p", maxLoginLinkCredsLen-len(email)-1)
+	if _, err := makeLoginPayload(email, longest); err != nil {
+		t.Errorf("%d characters of credentials should fit: %v", maxLoginLinkCredsLen, err)
+	}
+	if _, err := makeLoginPayload(email, longest+"p"); err == nil {
+		t.Errorf("%d characters of credentials should not fit", maxLoginLinkCredsLen+1)
+	}
+}
+
+func TestSplitCredentials(t *testing.T) {
+	tests := []struct {
+		name     string
+		in       string
+		email    string
+		password string
+	}{
+		{name: "empty"},
+		{name: "email only", in: "user@example.com"},
+		{name: "password only", in: "\nhunter2"},
+		{name: "not an email", in: "my email is user@example.com"},
+		{name: "email with name", in: "User <user@example.com> hunter2"},
+		{name: "newline", in: "user@example.com\nhunter2", email: "user@example.com", password: "hunter2"},
+		{name: "space", in: "user@example.com hunter2", email: "user@example.com", password: "hunter2"},
+		{name: "surrounding space", in: "  user@example.com \n hunter2 \n", email: "user@example.com", password: "hunter2"},
+		{name: "password with space", in: "user@example.com\nhunter 2", email: "user@example.com", password: "hunter 2"},
+		{name: "password with colon", in: "user@example.com\nhun:ter2", email: "user@example.com", password: "hun:ter2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			email, password, ok := splitCredentials(tt.in)
+			if ok != (tt.email != "") {
+				t.Fatalf("got ok = %v for %q", ok, tt.in)
+			}
+			if email != tt.email || password != tt.password {
+				t.Errorf("got %q/%q, want %q/%q", email, password, tt.email, tt.password)
+			}
+		})
+	}
+}
+
+func TestCommandArgs(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{in: "/loginlink", want: ""},
+		{in: "/loginlink ", want: ""},
+		{in: "/loginlink user@example.com hunter2", want: "user@example.com hunter2"},
+		{in: "/loginlink@BetterGiraBot user@example.com", want: "user@example.com"},
+		{in: "/loginlink\nuser@example.com\nhunter2", want: "user@example.com\nhunter2"},
+	}
+
+	for _, tt := range tests {
+		if got := commandArgs(tt.in); got != tt.want {
+			t.Errorf("commandArgs(%q) = %q, want %q", tt.in, got, tt.want)
 		}
-	}
-	if fits != 47 {
-		t.Errorf("expected 47 credential characters to fit, got %d", fits)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,6 +37,7 @@ func setupHandlers(s *server) {
 
 	s.bot.Handle("/start", wrapHandler((*customContext).handleStart))
 	s.bot.Handle("/login", wrapHandler((*customContext).handleLogin))
+	s.bot.Handle("/loginlink", wrapHandler((*customContext).handleLoginLink))
 	s.bot.Handle(tele.OnText, wrapHandler((*customContext).handleText))
 
 	s.bot.Handle("/debug", wrapHandler((*customContext).handleDebug), allowlist(*adminID))
@@ -161,12 +163,38 @@ func (c *customContext) handleStart() error {
 	return c.handleLogin()
 }
 
-// loginPayloadPrefix marks a /start deep link payload that carries credentials.
-// It's a single character on purpose: Telegram passes at most 64 payload
-// characters, and base64 of "email:password" eats through them fast.
-const loginPayloadPrefix = "L"
+const (
+	// loginPayloadPrefix marks a /start deep link payload that carries
+	// credentials. It's a single character on purpose: Telegram passes at most
+	// maxStartPayloadLen characters, and base64 of "email:password" eats
+	// through them fast.
+	loginPayloadPrefix = "L"
+	// maxStartPayloadLen is the payload length limit Telegram documents for
+	// deep links.
+	maxStartPayloadLen = 64
+)
 
 var errNotLoginPayload = errors.New("payload is not a login one")
+
+// makeLoginPayload encodes credentials into a /start deep link payload,
+// see parseLoginPayload for the format.
+func makeLoginPayload(email, password string) (string, error) {
+	payload := loginPayloadPrefix + base64.RawURLEncoding.EncodeToString([]byte(email+":"+password))
+	if len(payload) > maxStartPayloadLen {
+		return "", fmt.Errorf("payload of %d characters does not fit into a deep link", len(payload))
+	}
+	return payload, nil
+}
+
+// maxLoginLinkCredsLen is the longest "email:password" that fits into a deep
+// link payload.
+var maxLoginLinkCredsLen = func() int {
+	n := 0
+	for len(loginPayloadPrefix)+base64.RawURLEncoding.EncodedLen(n+1) <= maxStartPayloadLen {
+		n++
+	}
+	return n
+}()
 
 // parseLoginPayload decodes credentials out of a /start deep link payload of
 // the form "L<base64url(email:password)>". Telegram only allows A-Z, a-z, 0-9,
@@ -191,13 +219,78 @@ func parseLoginPayload(payload string) (email, password string, err error) {
 		return "", "", errors.New("payload has empty password")
 	}
 
-	// Same check as for a manually sent email.
-	emailParsed, err := mail.ParseAddress(email)
-	if err != nil || emailParsed.Address != email {
+	if !validEmail(email) {
 		return "", "", errors.New("payload has invalid email")
 	}
 
 	return email, password, nil
+}
+
+// validEmail reports whether s is a bare email address, e.g. not one with a
+// display name around it.
+func validEmail(s string) bool {
+	parsed, err := mail.ParseAddress(s)
+	return err == nil && parsed.Address == s
+}
+
+// splitCredentials splits an "email<whitespace>password" pair, the way one
+// would paste both at once. ok is false if s doesn't look like such a pair.
+func splitCredentials(s string) (email, password string, ok bool) {
+	s = strings.TrimSpace(s)
+
+	i := strings.IndexFunc(s, unicode.IsSpace)
+	if i < 0 {
+		return "", "", false
+	}
+
+	email, password = s[:i], strings.TrimSpace(s[i:])
+	if password == "" || !validEmail(email) {
+		return "", "", false
+	}
+	return email, password, true
+}
+
+// commandArgs returns everything after the command name of a message text.
+// Message.Payload can't be used for that, as it stops at the first newline.
+func commandArgs(text string) string {
+	i := strings.IndexFunc(text, unicode.IsSpace)
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimSpace(text[i:])
+}
+
+// handleLoginLink replies with a deep link that logs whoever opens it in with
+// the credentials given as command arguments.
+func (c *customContext) handleLoginLink() error {
+	email, pwd, ok := splitCredentials(commandArgs(c.Text()))
+	if !ok {
+		return c.Send(messageLoginLinkUsage, tele.ModeMarkdown)
+	}
+
+	// The command holds a password, don't keep it in the chat history.
+	if err := c.Delete(); err != nil {
+		return err
+	}
+
+	payload, err := makeLoginPayload(email, pwd)
+	if err != nil {
+		log.Println("bot: not making a login link:", err)
+		return c.Send(fmt.Sprintf(
+			"Email and password are too long for a Telegram deep link: "+
+				"they have to fit into %d characters together, yours take %d. 😔",
+			maxLoginLinkCredsLen-1, len(email)+len(pwd),
+		))
+	}
+
+	// No markdown: a payload may contain '_', which it would eat as italics.
+	return c.Send(fmt.Sprintf(
+		"🔗 Here's a login link for %s:\n\n"+
+			"https://t.me/%s?start=%s\n\n"+
+			"Whoever opens it gets logged in as this account, so treat it like the password itself. "+
+			"Delete this message once you've shared or saved the link.",
+		email, c.Bot().Me.Username, payload,
+	), tele.NoPreview)
 }
 
 // handleDeepLinkLogin logs the user in with credentials from a /start deep

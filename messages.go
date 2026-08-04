@@ -32,6 +32,13 @@ Great! Now, please send me your password.
 I'll remove it from the message history after login.
 `
 
+const messageLoginLinkUsage = `
+🔗 I can make a link that logs in with a single tap, handy for sharing an account or re-logging in later.
+
+Send me ` + "`/loginlink <email> <password>`" + ` (password can go on the next line), and I'll reply with the link.
+I'll delete your message right away, but the link itself is as good as the password, so share it carefully.
+`
+
 const messageHelp = `
 How to use this bot:
 
@@ -49,6 +56,7 @@ How to use this bot:
 ⭐️ You can name your favorite stations, I could list them, and include names in searches for convenience.
 
 🤓 If neat keyboard disappeared, run /help. To re-login run /login.
+🔗 /loginlink makes a one-tap login link out of an email and a password.
 `
 
 const messageFeedback = `

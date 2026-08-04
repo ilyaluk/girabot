@@ -529,6 +529,10 @@ func getAction(c tele.Context, u User) string {
 	if c.Message().Payload != "" && strings.HasPrefix(c.Message().Text, "/start") {
 		return "/start <payload>"
 	}
+	// /loginlink arguments are credentials
+	if strings.HasPrefix(c.Text(), "/loginlink") && commandArgs(c.Text()) != "" {
+		return "/loginlink <credentials>"
+	}
 
 	return c.Text()
 }
