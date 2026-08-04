@@ -144,10 +144,8 @@ func (c *customContext) handleStart() error {
 	badLink := !errors.Is(err, errNotLoginPayload)
 	if badLink {
 		log.Println("bot: bad login deep link:", err)
-		// The payload might still hold a password, don't keep it in the chat.
-		if err := c.Delete(); err != nil {
-			return err
-		}
+		// The payload might still hold a password.
+		c.tryDeleteCredentials()
 	}
 
 	if err := c.Send(messageHello, tele.ModeMarkdown); err != nil {
@@ -269,9 +267,7 @@ func (c *customContext) handleLoginLink() error {
 	}
 
 	// The command holds a password, don't keep it in the chat history.
-	if err := c.Delete(); err != nil {
-		return err
-	}
+	c.tryDeleteCredentials()
 
 	payload, err := makeLoginPayload(email, pwd)
 	if err != nil {
@@ -296,11 +292,10 @@ func (c *customContext) handleLoginLink() error {
 // handleDeepLinkLogin logs the user in with credentials from a /start deep
 // link, falling back to the manual flow if Gira does not like them.
 func (c *customContext) handleDeepLinkLogin(email, password string) error {
-	// The link sits in the chat history and holds the password, so drop it
-	// right away, same as we do with manually sent credentials.
-	if err := c.Delete(); err != nil {
-		return err
-	}
+	// Clients hide the payload of a deep link (they show a bare "/start"), but
+	// the message still carries it, so drop it as we do with manually sent
+	// credentials.
+	c.tryDeleteCredentials()
 
 	// Someone re-logging in via a link does not need the intro again.
 	if c.user.State < UserStateLoggedIn {
@@ -377,9 +372,7 @@ func (c *customContext) handleText() error {
 		// A user might send both credentials at once, e.g. as two lines.
 		if email, pwd, ok := splitCredentials(c.Text()); ok {
 			// The message holds a password, don't keep it in the chat history.
-			if err := c.Delete(); err != nil {
-				return err
-			}
+			c.tryDeleteCredentials()
 			return c.loginWithCredentials(email, pwd)
 		}
 
@@ -476,6 +469,16 @@ func (c *customContext) handleText() error {
 		return err
 	default:
 		return c.Send("Unknown state")
+	}
+}
+
+// tryDeleteCredentials removes the current message, which is expected to hold
+// credentials. Keeping the chat clean is not worth failing a login over, so an
+// error is only logged: the message might be gone already, or too old to
+// delete.
+func (c *customContext) tryDeleteCredentials() {
+	if err := c.Delete(); err != nil {
+		log.Println("bot: error deleting message with credentials:", err)
 	}
 }
 
