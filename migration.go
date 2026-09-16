@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/ilyaluk/girabot/internal/gira"
 )
 
@@ -20,8 +22,8 @@ const legacyStationSerialPrefix = "1000"
 // backends print in the station name; bikes and trips have nothing to match
 // against, so a stale one is dropped.
 func (s *server) migrateToVaimoo() {
-	var users []User
-	if err := s.db.Where("vaimoo_migrated = ?", false).Find(&users).Error; err != nil {
+	users, err := usersToMigrate(s.db)
+	if err != nil {
 		log.Println("error loading users for migration:", err)
 		return
 	}
@@ -72,6 +74,18 @@ func (s *server) migrateToVaimoo() {
 			log.Printf("error saving migrated state for %d: %v", u.ID, err)
 		}
 	}
+}
+
+// usersToMigrate returns the riders whose saved state is still in EMEL shape.
+//
+// The flag column was added to a table that already had rows, and SQLite fills
+// those with NULL rather than with the zero value of the type. NULL compares
+// equal to nothing, so a plain "vaimoo_migrated = false" would match none of
+// the users who actually need migrating.
+func usersToMigrate(db *gorm.DB) ([]User, error) {
+	var users []User
+	err := db.Where("coalesce(vaimoo_migrated, 0) = 0").Find(&users).Error
+	return users, err
 }
 
 // migrateUserFavorites rewrites one rider's favorites, returning the legacy
