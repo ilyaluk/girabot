@@ -20,14 +20,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"golang.org/x/oauth2"
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 	"gorm.io/gorm/clause"
 
 	"github.com/ilyaluk/girabot/internal/gira"
-	"github.com/ilyaluk/girabot/internal/giraauth"
-	"github.com/ilyaluk/girabot/internal/tokenserver"
+	"github.com/ilyaluk/girabot/internal/vaimoo"
 )
 
 func setupHandlers(s *server) {
@@ -76,9 +74,6 @@ func setupHandlers(s *server) {
 	authed.Handle("\f"+btnKeyTypeRateAddText, wrapHandler((*customContext).handleRateAddText))
 	authed.Handle("\f"+btnKeyTypeRateCommentCancel, wrapHandler((*customContext).handleCancelAddComment))
 	authed.Handle("\f"+btnKeyTypeRateSubmit, wrapHandler((*customContext).handleRateSubmit))
-
-	authed.Handle("\f"+btnKeyTypePayPoints, wrapHandler((*customContext).handlePayPoints))
-	authed.Handle("\f"+btnKeyTypePayMoney, wrapHandler((*customContext).handlePayMoney))
 }
 
 // wrapHandler wraps handler that accepts custom context to handler that accepts telebot context.
@@ -104,9 +99,6 @@ const (
 	btnKeyTypeRateAddText       = "rate_add_text"
 	btnKeyTypeRateCommentCancel = "rate_comment_cancel"
 	btnKeyTypeRateSubmit        = "rate_submit"
-
-	btnKeyTypePayPoints = "trip_pay_points"
-	btnKeyTypePayMoney  = "trip_pay_money"
 
 	btnKeyTypeRetryDebug = "retry_debug"
 
@@ -313,8 +305,8 @@ func (c *customContext) loginWithCredentials(email, password string) error {
 		return err
 	}
 
-	tok, err := c.s.auth.Login(c, email, password)
-	if errors.Is(err, giraauth.ErrInvalidEmail) || errors.Is(err, giraauth.ErrInvalidCredentials) {
+	session, err := c.s.auth.Login(c, email, password)
+	if errors.Is(err, vaimoo.ErrInvalidEmail) || errors.Is(err, vaimoo.ErrInvalidCredentials) {
 		if _, err := c.Bot().Edit(m, "Gira rejected these credentials, let's log in the manual way."); err != nil {
 			return err
 		}
@@ -324,7 +316,7 @@ func (c *customContext) loginWithCredentials(email, password string) error {
 		return err
 	}
 
-	return c.finishLogin(tok, m)
+	return c.finishLogin(session, m)
 }
 
 func (c *customContext) handleLogin() error {
@@ -336,9 +328,9 @@ func (c *customContext) handleLogin() error {
 	return nil
 }
 
-// finishLogin stores a fresh token, marks the user as logged in and greets
+// finishLogin stores a fresh session, marks the user as logged in and greets
 // them. progress is a "logging in" message, removed once the status is sent.
-func (c *customContext) finishLogin(tok *oauth2.Token, progress tele.Editable) error {
+func (c *customContext) finishLogin(session *vaimoo.Session, progress tele.Editable) error {
 	// Only a login that skipped handleLogin, which resets the state, can find
 	// the user logged in: a deep link swapping accounts. Spare them the help.
 	relogin := c.user.State >= UserStateLoggedIn
@@ -347,12 +339,13 @@ func (c *customContext) finishLogin(tok *oauth2.Token, progress tele.Editable) e
 	c.tryDeleteEmail()
 
 	dbToken := Token{
-		ID:    c.user.ID,
-		Token: tok,
+		ID:      c.user.ID,
+		Session: session,
 	}
 	if err := c.s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&dbToken).Error; err != nil {
 		return err
 	}
+	c.getSessionSource().set(session)
 
 	if err := c.handleStatus(); err != nil {
 		return err
@@ -406,8 +399,8 @@ func (c *customContext) handleText() error {
 			return err
 		}
 
-		tok, err := c.s.auth.Login(c, c.user.Email, pwd)
-		if errors.Is(err, giraauth.ErrInvalidEmail) {
+		session, err := c.s.auth.Login(c, c.user.Email, pwd)
+		if errors.Is(err, vaimoo.ErrInvalidEmail) {
 			if _, err := c.Bot().Edit(m, "Invalid email, please start over."); err != nil {
 				return err
 			}
@@ -418,7 +411,7 @@ func (c *customContext) handleText() error {
 			return c.handleLogin()
 		}
 
-		if errors.Is(err, giraauth.ErrInvalidCredentials) {
+		if errors.Is(err, vaimoo.ErrInvalidCredentials) {
 			if _, err := c.Bot().Edit(m,
 				"Invalid credentials, please try different password.\n"+
 					"To change email, run /login.",
@@ -435,7 +428,7 @@ func (c *customContext) handleText() error {
 
 		c.tryDeleteCredentials()
 
-		return c.finishLogin(tok, m)
+		return c.finishLogin(session, m)
 	case UserStateLoggedIn:
 		return c.handleLoggedInText()
 	case UserStateWaitingForFavName:
@@ -547,7 +540,7 @@ func (c *customContext) handleStatus() error {
 		for _, s := range info.ActiveSubscriptions {
 			subscr += fmt.Sprintf(
 				"• %s (until %s)\n",
-				s.SubscriptionName,
+				s.Name,
 				s.ExpirationDate.Format("2006-01-02"),
 			)
 		}
@@ -561,14 +554,11 @@ func (c *customContext) handleStatus() error {
 	return c.Send(fmt.Sprintf(
 		"Logged in. Gira account info:\n"+
 			"Name: `%s`\n"+
-			"Balance: `%.0f€`%s\n"+
-			"Bonus: `%d` (`%d€`)\n"+
+			"Balance: `%.2f€`%s\n"+
 			"%s",
 		info.Name,
 		info.Balance,
 		balanceWarning,
-		info.Bonus,
-		info.Bonus/500,
 		subscr,
 	), tele.ModeMarkdown)
 }
@@ -653,17 +643,17 @@ func (c *customContext) sendTyping() (error, func()) {
 // If loc is not nil, it will also show the distance to the station.
 // Callers should not pass more than 5 stations at once.
 func (c *customContext) sendStationList(stations []gira.Station, loc *tele.Location) error {
-	stationsDocks := make([]gira.Docks, len(stations))
+	stationsBikes := make([]gira.Bikes, len(stations))
 	wg := sync.WaitGroup{}
 	wg.Add(len(stations))
 	for i, s := range stations {
 		go func(i int, s gira.StationSerial) {
 			defer wg.Done()
-			docks, err := c.gira.GetStationDocks(c, s)
+			bikes, err := c.gira.GetStationBikes(c, s)
 			if err != nil {
 				return
 			}
-			stationsDocks[i] = docks
+			stationsBikes[i] = bikes
 		}(i, s.Serial)
 	}
 	wg.Wait()
@@ -690,16 +680,12 @@ func (c *customContext) sendStationList(stations []gira.Station, loc *tele.Locat
 			s.Location(),
 		))
 
-		// apparently, these values are not always the same
-		freeDocks := min(stationsDocks[i].Free(), s.Docks-s.Bikes)
-
 		btnText := fmt.Sprintf(
-			"%s%s: %2d ⚡️ %2d ⚙️ %d 🆓",
+			"%s%s: %2d ⚡️ %2d 🆓",
 			fav,
 			s.Number(),
-			stationsDocks[i].ElectricBikesAvailable(),
-			stationsDocks[i].ConventionalBikesAvailable(),
-			freeDocks,
+			len(stationsBikes[i]),
+			s.FreeDocks,
 		)
 
 		rm.InlineKeyboard = append(rm.InlineKeyboard, []tele.InlineButton{
@@ -772,14 +758,33 @@ func (c *customContext) handleLoggedInText() error {
 		return c.handleStationInner(station.Serial)
 	}
 
-	chr := strings.ToLower(txt[:1])[0]
-	if chr == 'e' || chr == 'c' {
-		// TODO: process as bike number
-		// We can't directly get bike by name, so we need to get all stations and then all docks.
-		// Maybe we can regularly cache all docks and bikes in the background.
+	// a bike plate, e.g. E2032, names a bike directly
+	if chr := strings.ToLower(txt[:1])[0]; chr == 'e' {
+		if _, err := strconv.Atoi(txt[1:]); err == nil {
+			return c.handleBikeName(txt)
+		}
 	}
 
 	return c.Send("Unknown command, try /help")
+}
+
+// handleBikeName sends the unlock message for a bike named by its plate.
+func (c *customContext) handleBikeName(name string) error {
+	err, cleanup := c.sendTyping()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	bike, err := c.gira.GetBike(c, name)
+	if errors.Is(err, gira.ErrNoBikeFound) {
+		return c.Send("Bike not found")
+	}
+	if err != nil {
+		return err
+	}
+
+	return c.sendBikeMessage(bike.CallbackData())
 }
 
 func (c *customContext) handleStation() error {
@@ -792,13 +797,7 @@ func (c *customContext) handleStation() error {
 	serial := gira.StationSerial(serialStr)
 
 	if cb2 == "delete_msg" {
-		// refresh stations cache
-		_, err := c.gira.GetStations(c)
-		if err != nil {
-			return err
-		}
-
-		station, err := c.gira.GetStationCached(c, serial)
+		station, err := c.gira.GetStation(c, serial)
 		if err != nil {
 			return err
 		}
@@ -830,48 +829,31 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 	}
 	defer cleanup()
 
-	// we can call cached version, because we retrieved fresh station list prior while listing stations
-	station, err := c.gira.GetStationCached(c, serial)
+	// Read fresh: the rider is about to act on this keyboard.
+	station, err := c.gira.GetStation(c, serial)
 	if err != nil {
 		return err
 	}
 
-	// but docks are always retrieved fresh
-	docks, err := c.gira.GetStationDocks(c, serial)
+	bikes, err := c.gira.GetStationBikes(c, serial)
 	if err != nil {
 		return err
 	}
 
-	freeDocks := docks.Free()
-
-	// filter out docks with no bike or not active
-	docks = slices.DeleteFunc(docks, func(d gira.Dock) bool {
-		return d.Bike == nil || d.Status != gira.AssetStatusActive
-	})
-	// order electric bikes first, then by dock number
-	slices.SortFunc(docks, func(i, j gira.Dock) int {
-		if i.Bike.Type != j.Bike.Type {
-			if i.Bike.Type == gira.BikeTypeElectric {
-				return -1
-			}
-			return 1
-		}
-		return cmp.Compare(i.Number, j.Number)
-	})
-
-	var maxEBike gira.Bike
-	for _, dock := range docks {
-		if dock.Bike.Type == gira.BikeTypeElectric && dock.Bike.Number() > maxEBike.Number() {
-			maxEBike = *dock.Bike
+	// the newest bikes have the highest plate numbers, so mark the top one
+	var maxBike gira.Bike
+	for _, bike := range bikes {
+		if bike.Number() > maxBike.Number() {
+			maxBike = bike
 		}
 	}
 
 	var dockBtns []tele.Btn
-	for _, dock := range docks {
+	for _, bike := range bikes {
 		dockBtns = append(dockBtns, tele.Btn{
 			Unique: btnKeyTypeBike,
-			Text:   dock.ButtonString(dock.Bike.Serial == maxEBike.Serial),
-			Data:   dock.Bike.CallbackData(),
+			Text:   bike.ButtonString(bike.Name == maxBike.Name),
+			Data:   bike.CallbackData(),
 		})
 	}
 
@@ -893,7 +875,7 @@ func (c *customContext) handleStationInner(serial gira.StationSerial) error {
 			Data:   string(serial) + "|delete_msg",
 		},
 		{
-			Text:   fmt.Sprintf("🆓 %d docks", freeDocks),
+			Text:   fmt.Sprintf("🆓 %d docks", station.FreeDocks),
 			Unique: btnKeyTypeIgnore,
 		},
 		{
@@ -971,34 +953,19 @@ func (c *customContext) handleUnlockBike() error {
 		return err
 	}
 
-	ok, err := c.gira.ReserveBike(c, bike.Serial)
-
-	if errors.Is(err, gira.ErrBikeAlreadyReserved) {
-		log.Printf("[uid:%d] bike already reserved, trying to cancel: %+v", c.user.ID, bike)
-		// at least try to cancel the reservation, ignore errors
-		if cancelled, _ := c.gira.CancelBikeReserve(c); cancelled {
-			// then, retry to reserve again
-			ok, err = c.gira.ReserveBike(c, bike.Serial)
-		}
-	}
-
-	if err != nil {
+	if err := c.gira.StartTrip(c, bike.CommID); err != nil {
 		return err
 	}
 
-	if !ok {
-		log.Printf("[uid:%d] bike reserve failed: %+v", c.user.ID, bike)
-		return c.Edit("Bike can't be reserved, try again?")
-	}
-
-	ok, err = c.gira.StartTrip(c)
+	// The watcher reads both of these, so they are set before it starts.
+	c.user.CurrentTripBike = bike.Name
+	c.user.CurrentTripMessageID = strconv.Itoa(c.Message().ID)
+	err = c.s.db.Model(c.user).Updates(map[string]any{
+		"current_trip_bike":       c.user.CurrentTripBike,
+		"current_trip_message_id": c.user.CurrentTripMessageID,
+	}).Error
 	if err != nil {
 		return err
-	}
-
-	if !ok {
-		log.Printf("[uid:%d] bike start trip failed: %+v", c.user.ID, bike)
-		return c.Edit("Bike can't be unlocked, try again?")
 	}
 
 	go func() {
@@ -1007,7 +974,6 @@ func (c *customContext) handleUnlockBike() error {
 		}
 	}()
 
-	c.user.CurrentTripMessageID = strconv.Itoa(c.Message().ID)
 	return c.Edit(
 		bikeDesc+
 			"Unlocked bike, waiting for trip to start.\n"+
@@ -1051,13 +1017,16 @@ func (c *customContext) watchActiveTrip(isNewTrip bool) error {
 	c.s.activeTripsCancels[c.user.ID] = cancel
 	c.s.mu.Unlock()
 
-	ch, err := gira.SubscribeActiveTrips(ctx, c.getTokenSource())
-	if err != nil {
-		return err
+	// A watch resumed after a restart has to reconcile a trip that may already
+	// be over, which the code from the database is what identifies.
+	var resumeCode gira.TripCode
+	if !isNewTrip {
+		resumeCode = c.user.CurrentTripCode
 	}
 
+	ch := c.gira.WatchTrip(ctx, c.user.CurrentTripBike, resumeCode)
+
 	// TODO: check for case with two bikes and fast return
-	// TODO: cancel watch if trip did not start after some time
 
 	if isNewTrip {
 		// first channel pass -- wait for new trip
@@ -1069,6 +1038,10 @@ func (c *customContext) watchActiveTrip(isNewTrip bool) error {
 	// second channel pass -- look for current trip updates
 	for trip := range ch {
 		log.Printf("[uid:%d] active trip update: %+v", c.user.ID, trip)
+
+		if trip.ErrorCode != 0 {
+			return c.reportTripWatchFailure(trip)
+		}
 
 		if trip.Code != c.user.CurrentTripCode {
 			// got update for some old trip
@@ -1095,14 +1068,18 @@ func (c *customContext) watchActiveTrip(isNewTrip bool) error {
 	return nil
 }
 
-// waitForTripStart reads TripUpdates from the channel until it finds the one
-// that is not finished or canceled. It then updates the user's current trip code
-// and sends the initial message.
+// waitForTripStart reads TripUpdates from the channel until the trip the rider
+// just unlocked shows up. It then records the trip code and sends the initial
+// message.
 func (c *customContext) waitForTripStart(ch <-chan gira.TripUpdate) error {
 	for trip := range ch {
 		log.Printf("[uid:%d] got some current trip: %+v", c.user.ID, trip)
 
-		if trip.Finished || trip.Canceled {
+		if trip.ErrorCode != 0 {
+			return c.reportTripWatchFailure(trip)
+		}
+
+		if trip.Finished || trip.Code == "" {
 			// got update for some old trip
 			continue
 		}
@@ -1110,7 +1087,14 @@ func (c *customContext) waitForTripStart(ch <-chan gira.TripUpdate) error {
 		log.Printf("[uid:%d] active trip started: %+v", c.user.ID, trip)
 
 		c.user.CurrentTripCode = trip.Code
-		if err := c.s.db.Model(c.user).Update("CurrentTripCode", trip.Code).Error; err != nil {
+		if trip.Bike != "" {
+			c.user.CurrentTripBike = trip.Bike
+		}
+		err := c.s.db.Model(c.user).Updates(map[string]any{
+			"current_trip_code": trip.Code,
+			"current_trip_bike": c.user.CurrentTripBike,
+		}).Error
+		if err != nil {
 			return err
 		}
 
@@ -1120,18 +1104,41 @@ func (c *customContext) waitForTripStart(ch <-chan gira.TripUpdate) error {
 	return nil
 }
 
+// reportTripWatchFailure tells the rider that the bot lost track of the trip.
+func (c *customContext) reportTripWatchFailure(trip gira.TripUpdate) error {
+	log.Printf("[uid:%d] trip watch failed: %+v", c.user.ID, trip)
+
+	msg := "I can't see a trip on this bike. If it did unlock, check the official app before trying again."
+	switch trip.ErrorCode {
+	case gira.TripErrorStartTimeout:
+		msg = "The bike reported a problem while unlocking. " +
+			"If it did unlock, check the official app before trying again."
+	case gira.TripErrorWatchFailed:
+		msg = "I lost track of this trip. Check the official app, and /status once you're logged in again."
+	}
+
+	if _, err := c.Bot().Edit(c.getActiveTripMsg(), msg, &tele.ReplyMarkup{}); err != nil {
+		log.Printf("[uid:%d] could not update the trip message: %v", c.user.ID, err)
+		if _, err := c.Bot().Send(tele.ChatID(c.user.ID), msg); err != nil {
+			return err
+		}
+	}
+
+	c.user.CurrentTripMessageID = ""
+	c.user.CurrentTripBike = ""
+	return c.s.db.Model(c.user).Updates(map[string]any{
+		"current_trip_message_id": "",
+		"current_trip_bike":       "",
+	}).Error
+}
+
 func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
-	if trip.Error != 0 {
-		return fmt.Errorf("active trip watch: %d", trip.Error)
+	if trip.ErrorCode != 0 {
+		return c.reportTripWatchFailure(trip)
 	}
 
 	if trip.Finished {
 		return c.updateEndedTripMessage(trip)
-	}
-
-	var costStr string
-	if trip.Cost != 0 {
-		costStr = fmt.Sprintf("🤑 Cost:  %.0f€\n", trip.Cost)
 	}
 
 	_, err := c.Bot().Edit(
@@ -1140,11 +1147,9 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 			"*Active trip*:\n"+
 				"🚲 Bike %s\n"+
 				"🕑 Duration ≥%s\n"+
-				"%s"+
 				"\n🛟 To get Gira support, call +351 211 163 125.",
 			trip.Bike,
 			trip.PrettyDuration(),
-			costStr,
 		),
 		tele.ModeMarkdown,
 	)
@@ -1156,56 +1161,16 @@ func (c *customContext) updateActiveTripMessage(trip gira.TripUpdate) error {
 }
 
 func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
-	var btns tele.Row
-	var costStr string
+	var details string
+
+	if trip.Distance > 0 {
+		details += fmt.Sprintf("📏 Distance: %.1f km\n", trip.Distance/1000)
+	}
 
 	if trip.Cost > 0 {
 		log.Printf("last trip was not free: %+v", trip)
-
-		costStr = fmt.Sprintf("\n🤑 Cost: %.0f€\n", trip.Cost)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		status, err := c.gira.GetClientInfo(ctx)
-		if err != nil {
-			log.Printf("[uid:%d] ignored client info error: %v", c.user.ID, err)
-		}
-
-		if trip.CanUsePoints {
-			btns = append(btns, tele.Btn{
-				Unique: btnKeyTypePayPoints,
-				Text:   "💰 Pay with points",
-				Data:   string(trip.Code),
-			})
-
-			if err == nil {
-				costStr += fmt.Sprintf("💰 Points balance: %d€\n", status.Bonus/500)
-			}
-		}
-
-		if trip.CanPayWithMoney {
-			btns = append(btns, tele.Btn{
-				Unique: btnKeyTypePayMoney,
-				Text:   "💶 Pay with money",
-				Data:   string(trip.Code),
-			})
-
-			if err == nil {
-				costStr += fmt.Sprintf("💶 Account balance: %.0f€\n", status.Balance)
-			}
-		}
-
-		if !trip.CanUsePoints && !trip.CanPayWithMoney {
-			costStr += "\n⚠️ You can't pay for this trip with points or money, please use official app to top up and pay for it.\n" +
-				"Rating the trip now might trigger some Gira bug and make it free, try not to do that. Or do, I don't care, it's your account."
-		} else {
-			costStr += "\n🧾 Use buttons below to pay for the trip."
-		}
+		details += fmt.Sprintf("🤑 Cost: %.2f€, charged to your Gira wallet\n", trip.Cost)
 	}
-
-	rm := &tele.ReplyMarkup{}
-	rm.Inline(btns)
 
 	if _, err := c.Bot().Send(
 		tele.ChatID(c.user.ID),
@@ -1213,16 +1178,11 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 			"Trip ended, thanks for using BetterGiraBot!\n"+
 				"🚲 Bike: %s\n"+
 				"🕑 Duration: %s\n"+
-				"💰 Points earned: +%d, total %d (%d€)\n"+
 				"%s",
 			trip.Bike,
 			trip.PrettyDuration(),
-			trip.TripPoints,
-			trip.ClientPoints,
-			trip.ClientPoints/500,
-			costStr,
+			details,
 		),
-		rm,
 	); err != nil {
 		return err
 	}
@@ -1233,56 +1193,6 @@ func (c *customContext) updateEndedTripMessage(trip gira.TripUpdate) error {
 	c.user.CurrentTripMessageID = ""
 
 	return nil
-}
-
-func (c *customContext) handlePayPoints() error {
-	if c.Callback() == nil {
-		return c.Send("No callback")
-	}
-
-	tc := gira.TripCode(c.Callback().Data)
-	if tc == "" {
-		return c.Send("No trip code")
-	}
-
-	paid, err := c.gira.PayTripWithPoints(c, tc)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("paid for %s with points: %d", tc, paid)
-
-	// remove pay buttons from trip message
-	if err := c.Edit(&tele.ReplyMarkup{}); err != nil {
-		return err
-	}
-
-	return c.Reply(fmt.Sprintf("Paid with points: -%v", paid))
-}
-
-func (c *customContext) handlePayMoney() error {
-	if c.Callback() == nil {
-		return c.Send("No callback")
-	}
-
-	tc := gira.TripCode(c.Callback().Data)
-	if tc == "" {
-		return c.Send("No trip code")
-	}
-
-	paid, err := c.gira.PayTripWithMoney(c, tc)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("paid for %s with money: %d", tc, paid)
-
-	// remove pay buttons from trip message
-	if err := c.Edit(&tele.ReplyMarkup{}); err != nil {
-		return err
-	}
-
-	return c.Reply(fmt.Sprintf("Paid with money: -%v", paid))
 }
 
 func (c *customContext) handleSendRateMsg() error {
@@ -1402,12 +1312,9 @@ func (c *customContext) handleRateSubmit() error {
 	}
 	defer cleanup()
 
-	ok, err := c.gira.RateTrip(c, c.user.CurrentTripCode, c.user.CurrentTripRating)
+	err = c.gira.RateTrip(c, c.user.CurrentTripCode, c.user.CurrentTripBike, c.user.CurrentTripRating)
 	if err != nil {
 		return err
-	}
-	if !ok {
-		return c.Edit("Can't rate trip, try again?", getStarButtons(c.user.CurrentTripRating.Rating))
 	}
 
 	stars := strings.Repeat("⭐️", c.user.CurrentTripRating.Rating) + strings.Repeat("☆", 5-c.user.CurrentTripRating.Rating)
@@ -1418,6 +1325,7 @@ func (c *customContext) handleRateSubmit() error {
 
 	c.user.RateMessageID = ""
 	c.user.CurrentTripCode = ""
+	c.user.CurrentTripBike = ""
 	c.user.CurrentTripRating = gira.TripRating{}
 	c.user.CurrentTripRateAwaiting = false
 
@@ -1542,9 +1450,16 @@ func (c *customContext) handleShowFavorites() error {
 	for serial := range c.user.Favorites {
 		s, err := c.gira.GetStationCached(c, serial)
 		if err != nil {
-			return err
+			// A station Gira has since retired must not take the whole list
+			// down with it, or the favorite becomes impossible to remove.
+			log.Printf("[uid:%d] skipping favorite station %s: %v", c.user.ID, serial, err)
+			continue
 		}
 		stations = append(stations, s)
+	}
+
+	if len(stations) == 0 {
+		return c.Send("None of your favorite stations are available right now")
 	}
 
 	stations = slices.DeleteFunc(stations, func(i gira.Station) bool {
@@ -1579,8 +1494,6 @@ func (c *customContext) handleDebugRetry() error {
 	return c.runDebug(c.Message().ReplyTo.Text)
 }
 
-var debugStatsFirebaseToken = ""
-
 func (c *customContext) runDebug(text string) error {
 	defer func() {
 		if err := recover(); err != nil {
@@ -1596,58 +1509,39 @@ func (c *customContext) runDebug(text string) error {
 	log.Printf("running debug command: %+v", args)
 
 	getAccessToken := func() (string, error) {
-		ts := c.getTokenSource()
-		tok, err := ts.Token()
+		session, err := c.getSessionSource().Session(false)
 		if err != nil {
 			return "", err
 		}
-		return tok.AccessToken, nil
+		return session.AccessToken, nil
 	}
 
 	handlers := map[string]func() (any, error){
 		"user": func() (any, error) {
 			return c.user, nil
 		},
-		"tokens": func() (any, error) {
-			ts := c.getTokenSource()
-			tok, err := ts.Token()
+		"session": func() (any, error) {
+			session, err := c.getSessionSource().Session(false)
 			if err != nil {
 				return nil, err
 			}
-			return *tok, nil
+			redacted := *session
+			redacted.AccessToken = "<redacted>"
+			redacted.RefreshToken = "<redacted>"
+			return redacted, nil
 		},
 		"token": func() (any, error) {
 			return getAccessToken()
 		},
-		"fbToken": func() (any, error) {
-			tok, err := getAccessToken()
+		"refresh": func() (any, error) {
+			session, err := c.getSessionSource().Session(true)
 			if err != nil {
 				return nil, err
 			}
-			return tokenserver.Get(c, tok)
-		},
-		"fbTokenEnc": func() (any, error) {
-			tok, err := getAccessToken()
-			if err != nil {
-				return nil, err
-			}
-			return tokenserver.GetEncrypted(c, tok)
-		},
-		"fbStats": func() (any, error) {
-			// nah, race conditions shouldn't happen here
-			if debugStatsFirebaseToken == "" {
-				tok, err := getAccessToken()
-				if err != nil {
-					return nil, err
-				}
-				fbt, err := tokenserver.Get(c, tok)
-				if err != nil {
-					return nil, err
-				}
-				debugStatsFirebaseToken = fbt
-			}
-
-			return tokenserver.GetStats(c, debugStatsFirebaseToken)
+			return map[string]any{
+				"expiry":         session.Expiry,
+				"refresh_expiry": session.RefreshExpiry,
+			}, nil
 		},
 		"client": func() (any, error) {
 			return c.gira.GetClientInfo(c)
@@ -1659,7 +1553,13 @@ func (c *customContext) runDebug(text string) error {
 			if len(args) == 1 {
 				return "missing station serial", nil
 			}
-			return c.gira.GetStationDocks(c, gira.StationSerial(args[1]))
+			serial := gira.StationSerial(args[1])
+			station, err := c.gira.GetStation(c, serial)
+			if err != nil {
+				return nil, err
+			}
+			bikes, err := c.gira.GetStationBikes(c, serial)
+			return map[string]any{"station": station, "bikes": bikes}, err
 		},
 		"stationByNumber": func() (any, error) {
 			if len(args) == 1 {
@@ -1671,14 +1571,20 @@ func (c *customContext) runDebug(text string) error {
 			}
 			for _, s := range ss {
 				if s.Number() == args[1] {
-					docks, err := c.gira.GetStationDocks(c, s.Serial)
+					bikes, err := c.gira.GetStationBikes(c, s.Serial)
 					return map[string]any{
 						"station": s,
-						"docks":   docks,
+						"bikes":   bikes,
 					}, err
 				}
 			}
-			return c.gira.GetStationDocks(c, gira.StationSerial(args[1]))
+			return "station not found", nil
+		},
+		"bike": func() (any, error) {
+			if len(args) == 1 {
+				return "missing bike name", nil
+			}
+			return c.gira.GetBike(c, args[1])
 		},
 		"activeTrip": func() (any, error) {
 			return c.gira.GetActiveTrip(c)
@@ -1697,51 +1603,25 @@ func (c *customContext) runDebug(text string) error {
 			pageSize, _ := strconv.Atoi(args[2])
 			return c.gira.GetTripHistory(c, page, pageSize)
 		},
-		"unratedTrips": func() (any, error) {
-			if len(args) < 3 {
-				return "missing page and pageSize", nil
-			}
-			page, _ := strconv.Atoi(args[1])
-			pageSize, _ := strconv.Atoi(args[2])
-			return c.gira.GetUnratedTrips(c, page, pageSize)
-		},
-		"doReserve": func() (any, error) {
-			if len(args) == 1 {
-				return "missing bike serial", nil
-			}
-			return c.gira.ReserveBike(c, gira.BikeSerial(args[1]))
-		},
-		"doCancel": func() (any, error) {
-			return c.gira.CancelBikeReserve(c)
-		},
 		"doStart": func() (any, error) {
-			return c.gira.StartTrip(c)
+			if len(args) == 1 {
+				return "missing bike communication id", nil
+			}
+			return nil, c.gira.StartTrip(c, args[1])
 		},
 		"doRateTrip": func() (any, error) {
-			args := strings.SplitN(text, " ", 3)
-			if len(args) < 3 {
-				return "missing trip code, rating and comment", nil
+			args := strings.SplitN(text, " ", 5)
+			if len(args) < 5 {
+				return "missing trip code, bike name, rating and comment", nil
 			}
-			rating, _ := strconv.Atoi(args[2])
+			rating, _ := strconv.Atoi(args[3])
 			req := gira.TripRating{
 				Rating:  rating,
-				Comment: args[3],
+				Comment: args[4],
 			}
-			return c.gira.RateTrip(c, gira.TripCode(args[1]), req)
+			return nil, c.gira.RateTrip(c, gira.TripCode(args[1]), args[2], req)
 		},
-		"doPayPoints": func() (any, error) {
-			if len(args) == 1 {
-				return "missing trip code", nil
-			}
-			return c.gira.PayTripWithPoints(c, gira.TripCode(args[1]))
-		},
-		"doPayMoney": func() (any, error) {
-			if len(args) == 1 {
-				return "missing trip code", nil
-			}
-			return c.gira.PayTripWithMoney(c, gira.TripCode(args[1]))
-		},
-		"wsServerTime": func() (any, error) {
+		"watchTrip": func() (any, error) {
 			if len(args) == 1 {
 				return "missing duration", nil
 			}
@@ -1754,32 +1634,11 @@ func (c *customContext) runDebug(text string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), dur)
 			defer cancel()
 
-			ch, err := gira.SubscribeServerDate(ctx, c.getTokenSource())
-			for t := range ch {
-				_ = c.Send(fmt.Sprintf("Server time: %s", t.Format(time.RFC3339)))
-			}
-
-			return nil, err
-		},
-		"wsActiveTrip": func() (any, error) {
-			if len(args) == 1 {
-				return "missing duration", nil
-			}
-
-			dur, err := time.ParseDuration(args[1])
-			if err != nil {
-				return nil, err
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), dur)
-			defer cancel()
-
-			ch, err := gira.SubscribeActiveTrips(ctx, c.getTokenSource())
-			for trip := range ch {
+			for trip := range c.gira.WatchTrip(ctx, c.user.CurrentTripBike, "") {
 				_ = c.Send(fmt.Sprintf("Current trip: `%+v`", trip), tele.ModeMarkdown)
 			}
 
-			return nil, err
+			return nil, nil
 		},
 		"metrics": func() (any, error) {
 			ms, _ := prometheus.DefaultGatherer.Gather()

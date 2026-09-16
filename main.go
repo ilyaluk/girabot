@@ -17,16 +17,13 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/oauth2"
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/ilyaluk/girabot/internal/emeltls"
 	"github.com/ilyaluk/girabot/internal/gira"
-	"github.com/ilyaluk/girabot/internal/giraauth"
-	"github.com/ilyaluk/girabot/internal/tokenserver"
+	"github.com/ilyaluk/girabot/internal/vaimoo"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -48,7 +45,14 @@ type User struct {
 	Favorites         map[gira.StationSerial]string `gorm:"serializer:json"`
 	EditingStationFav gira.StationSerial
 
-	CurrentTripCode         gira.TripCode
+	// VaimooMigrated records that the identifiers saved here are VAIMOO ones
+	// rather than the EMEL ones used before the backend migration.
+	VaimooMigrated bool
+
+	CurrentTripCode gira.TripCode
+	// CurrentTripBike is the plate of the bike the trip runs on. Rating a trip
+	// needs it, and the backend does not report it once the trip is over.
+	CurrentTripBike         string
 	CurrentTripMessageID    string
 	RateMessageID           string
 	CurrentTripRating       gira.TripRating `gorm:"serializer:json"`
@@ -90,20 +94,22 @@ func (u filteredUser) String() string {
 	return fmt.Sprintf("%+v", User(u))
 }
 
+// Token holds one rider's VAIMOO session. The table keeps its name from when
+// the backend handed out plain OAuth tokens.
 type Token struct {
-	ID    int64         `gorm:"primarykey"`
-	Token *oauth2.Token `gorm:"serializer:json"`
+	ID      int64           `gorm:"primarykey"`
+	Session *vaimoo.Session `gorm:"serializer:json"`
 }
 
 type server struct {
 	db   *gorm.DB
 	bot  *tele.Bot
-	auth *giraauth.Client
+	auth *vaimoo.Client
 
 	mu sync.Mutex
-	// tokenSources is a map of user ID to token source.
-	// It's used to cache token sources, also to persist one instance of token source per user due to locking.
-	tokenSources map[int64]*tokenSource
+	// sessionSources is a map of user ID to session source.
+	// It's used to cache session sources, also to persist one instance of session source per user due to locking.
+	sessionSources map[int64]*sessionSource
 	// activeTripsCancels is a map of user ID to cancel function for active trip watcher.
 	// It's used to cancel active trip watcher if for some reason two watchers are started for one user.
 	activeTripsCancels map[int64]context.CancelFunc
@@ -124,8 +130,8 @@ func main() {
 	flag.Parse()
 
 	s := server{
-		auth:               giraauth.New(&http.Client{Transport: emeltls.Transport()}),
-		tokenSources:       map[int64]*tokenSource{},
+		auth:               vaimoo.New(&http.Client{}),
+		sessionSources:     map[int64]*sessionSource{},
 		activeTripsCancels: map[int64]context.CancelFunc{},
 	}
 
@@ -136,6 +142,14 @@ func main() {
 	}
 	if err := db.AutoMigrate(&User{}, &Token{}); err != nil {
 		log.Fatal(err)
+	}
+
+	// The pre-migration column held OAuth tokens for a backend that no longer
+	// exists, so drop it rather than keep stale credentials around.
+	if db.Migrator().HasColumn(&Token{}, "token") {
+		if err := db.Migrator().DropColumn(&Token{}, "token"); err != nil {
+			log.Println("could not drop the legacy token column:", err)
+		}
 	}
 
 	s.db = db
@@ -203,6 +217,8 @@ func main() {
 
 	// register middlewares and handlers
 	setupHandlers(&s)
+
+	s.migrateToVaimoo()
 
 	go s.refreshTokensWatcher()
 	s.loadActiveTrips()
@@ -275,6 +291,7 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 			u.TGUsername = c.Sender().Username
 			u.TGName = c.Sender().FirstName + " " + c.Sender().LastName
 			u.Favorites = make(map[gira.StationSerial]string)
+			u.VaimooMigrated = true
 
 			res = s.db.Create(&u)
 			if res.Error != nil {
@@ -301,10 +318,7 @@ func (s *server) addCustomContext(next tele.HandlerFunc) tele.HandlerFunc {
 func (s *server) newCustomContext(c tele.Context, u *User) (*customContext, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-	ts := s.getTokenSource(u.ID)
-	oauthC := &http.Client{Transport: &oauth2.Transport{Source: ts, Base: emeltls.Transport()}}
-	fbC := newFbTokenClient(oauthC.Transport, ts)
-	girac := gira.New(fbC)
+	girac := gira.New(&http.Client{}, s.getSessionSource(u.ID))
 
 	return &customContext{
 		Context: c,
@@ -368,18 +382,14 @@ func (s *server) onError(err error, c tele.Context) {
 			log.Println("bot: ignoring message not modified error")
 			return
 
-		case errors.Is(err, giraauth.ErrInternalServer):
-			prettyErr = "Gira Auth API returned internal server error. Please try again."
+		case errors.Is(err, vaimoo.ErrInternalServer):
+			prettyErr = "Gira API returned internal server error. Please try again."
 
-		case errors.Is(err, giraauth.ErrInvalidRefreshToken):
-			prettyErr = "Gira Auth API says that your token is invalid. Please re-login via /login."
+		case errors.Is(err, vaimoo.ErrInvalidRefreshToken), errors.Is(err, gira.ErrNotLoggedIn):
+			prettyErr = "Your Gira session has expired. Please re-login via /login."
 
 		case errors.Is(err, gira.ErrAlreadyHasActiveTrip):
 			prettyErr = "Gira says that you already have an active trip. This is probably their bug. " +
-				"Try unlocking bike again, or call Gira support at +351 211 163 125."
-
-		case errors.Is(err, gira.ErrBikeAlreadyReserved):
-			prettyErr = "Gira says that the bike is already reserved. This is probably their bug. " +
 				"Try unlocking bike again, or call Gira support at +351 211 163 125."
 
 		case errors.Is(err, gira.ErrBikeInRepair):
@@ -432,39 +442,24 @@ func (s *server) onError(err error, c tele.Context) {
 			prettyErr = "You don't have any active subscriptions. " +
 				"Please buy a subscription in official app and try again."
 
-		case errors.Is(err, gira.ErrNoServiceStatusFound):
-			prettyErr = "Gira service is not available. 🤷🏼"
-
 		case errors.Is(err, gira.ErrBikeAlreadyInTrip):
 			prettyErr = "The bike is already in a trip. Try another one."
 
-		case errors.Is(err, gira.ErrTMLCommunication):
-			prettyErr = "Gira has issues communicating with TML/Navegante. " +
-				"Probably it can't check your monthly ticket validity. " +
-				"Try again later, or buy Gira yearly pass. 🤷"
+		case errors.Is(err, gira.ErrNoBikeFound):
+			prettyErr = "Gira can't find this bike. Try another one."
 
-		case errors.Is(err, gira.ErrServiceUnavailable):
-			loc, _ := time.LoadLocation("Europe/Lisbon")
-			hr := time.Now().In(loc).Hour()
-			if hr >= 2 && hr < 6 {
-				prettyErr = "Gira is not available at night (2-6 AM)."
-			} else {
-				prettyErr = "Gira service is unavailable. Try again later."
-			}
+		case errors.Is(err, gira.ErrUnableToStartTrip):
+			prettyErr = "Gira could not unlock the bike. Try again, or try another one."
 
-		case errors.Is(err, gira.ErrForbidden):
+		case errors.Is(err, gira.ErrTripNotFound):
+			prettyErr = "Gira can't find this trip any more. 🤷🏼"
+
+		case errors.Is(err, gira.ErrForbidden), errors.Is(err, vaimoo.ErrUnauthorized):
 			if _, err := s.bot.Send(tele.ChatID(*adminID), "forbidden: "+adminMsg, tele.ModeMarkdown); err != nil {
 				log.Println("bot: error sending recovered error:", err)
 			}
 
-			prettyErr = "There are some issues with bypassing the EMEL checks. We're working on it."
-
-		case errors.Is(err, tokenserver.ErrTokenFetch):
-			if _, err := s.bot.Send(tele.ChatID(*adminID), "no tokens in source", tele.ModeMarkdown); err != nil {
-				log.Println("bot: error sending recovered error:", err)
-			}
-
-			prettyErr = "There's currently no tokens to circumvent Gira API limits. Please try again in a couple of minutes."
+			prettyErr = "Gira refused the request. Try /login again, and tell @ilyaluk if that doesn't help."
 
 		case errors.Is(err, gira.ErrServiceUnavailable):
 			hr := time.Now().In(lisbonTZ).Hour()
@@ -541,6 +536,9 @@ func getAction(c tele.Context, u User) string {
 	return c.Text()
 }
 
+// refreshTokensWatcher keeps sessions alive. VAIMOO refresh tokens last five
+// days and rotate on every use, so a rider who does not open the bot for a week
+// would otherwise have to log in again.
 func (s *server) refreshTokensWatcher() {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
@@ -548,36 +546,45 @@ func (s *server) refreshTokensWatcher() {
 	for {
 		select {
 		case <-time.After(time.Hour + time.Duration(rand.Intn(300))*time.Second):
-			log.Println("refreshing tokens")
+			log.Println("refreshing sessions")
 			var tokens []Token
 			if err := s.db.Find(&tokens).Error; err != nil {
-				s.bot.OnError(fmt.Errorf("error getting tokens for refresh: %v", err), nil)
+				s.bot.OnError(fmt.Errorf("error getting sessions for refresh: %v", err), nil)
 				continue
 			}
 
 			for _, tok := range tokens {
-				// Refresh key is used to get new access key, so we refresh it if it's about to expire.
-				// Access key expiry is 2 minutes, refresh key expiry is 7 days
-				// It's easier to grab saved access token expiry than to parse JWT and get issued at.
-				if time.Since(tok.Token.Expiry) < 6*24*time.Hour {
+				if tok.Session == nil || tok.Session.RefreshExpiry.IsZero() {
+					continue
+				}
+				// Refresh a day before the refresh token dies, which leaves
+				// room for a few failed attempts.
+				if time.Until(tok.Session.RefreshExpiry) > 24*time.Hour {
 					continue
 				}
 
-				log.Println("refreshing token for", tok.ID)
-				_, err := s.getTokenSource(tok.ID).Token()
-				if err != nil {
-					log.Printf("error refreshing token for %d: %v", tok.ID, err)
-
-					s.bot.OnError(fmt.Errorf("failed token refresh for %d: %v (token was removed)", tok.ID, err), nil)
-					s.db.Delete(&tok)
-
-					s.db.Model(&User{}).Where("id = ?", tok.ID).Update("state", 0)
-
-					_, err = s.bot.Send(tele.ChatID(tok.ID), "Your session has expired. Please log in again via /login.")
-					if err != nil {
-						log.Printf("error sending session expired message to %d: %v", tok.ID, err)
-					}
+				log.Println("refreshing session for", tok.ID)
+				_, err := s.getSessionSource(tok.ID).Session(true)
+				if err == nil {
 					continue
+				}
+
+				log.Printf("error refreshing session for %d: %v", tok.ID, err)
+
+				// Only the backend refusing the refresh token means the rider
+				// has to log in again. Anything else gets another hour.
+				if !errors.Is(err, vaimoo.ErrInvalidRefreshToken) {
+					s.bot.OnError(fmt.Errorf("session refresh for %d failed, will retry: %v", tok.ID, err), nil)
+					continue
+				}
+
+				s.bot.OnError(fmt.Errorf("session for %d was refused and removed: %v", tok.ID, err), nil)
+				s.db.Delete(&tok)
+				s.db.Model(&User{}).Where("id = ?", tok.ID).Update("state", 0)
+
+				_, err = s.bot.Send(tele.ChatID(tok.ID), "Your session has expired. Please log in again via /login.")
+				if err != nil {
+					log.Printf("error sending session expired message to %d: %v", tok.ID, err)
 				}
 			}
 		case <-done:
@@ -609,72 +616,102 @@ func (s *server) loadActiveTrips() {
 	}
 }
 
-// getTokenSource returns token source for user. It returns cached token source if it exists.
-func (s *server) getTokenSource(uid int64) oauth2.TokenSource {
+// getSessionSource returns the session source for a user, creating it if
+// needed. One instance per user is kept so that refreshes stay serialised.
+func (s *server) getSessionSource(uid int64) *sessionSource {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if ts, ok := s.tokenSources[uid]; ok {
-		return ts
+	if ss, ok := s.sessionSources[uid]; ok {
+		return ss
 	}
 
-	s.tokenSources[uid] = &tokenSource{
+	s.sessionSources[uid] = &sessionSource{
 		db:   s.db,
 		auth: s.auth,
 		uid:  uid,
 	}
-	return s.tokenSources[uid]
+	return s.sessionSources[uid]
 }
 
-func (c *customContext) getTokenSource() oauth2.TokenSource {
-	return c.s.getTokenSource(c.user.ID)
+func (c *customContext) getSessionSource() *sessionSource {
+	return c.s.getSessionSource(c.user.ID)
 }
 
-// tokenSource is an oauth2 token source that saves token to database.
-// It also refreshes token if it's invalid. It's safe for concurrent use.
-type tokenSource struct {
+// sessionSource hands out a rider's VAIMOO session, refreshing and saving it
+// when the access token has expired. It is safe for concurrent use.
+type sessionSource struct {
 	db   *gorm.DB
-	auth *giraauth.Client
+	auth *vaimoo.Client
 	uid  int64
 
 	mu sync.Mutex
+	// cached is the session this process last obtained. Refreshing rotates the
+	// refresh token and burns the old one, so a refresh that could not be saved
+	// must still be honoured here or the rider is locked out.
+	cached *vaimoo.Session
 }
 
-func (t *tokenSource) Token() (*oauth2.Token, error) {
+// set records a session this process just obtained by logging in.
+func (t *sessionSource) set(session *vaimoo.Session) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cached = session
+}
+
+func (t *sessionSource) Session(force bool) (*vaimoo.Session, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	l := log.New(os.Stderr, fmt.Sprintf("sessionSource[uid:%d] ", t.uid), log.LstdFlags)
+
 	var tok Token
 	if err := t.db.First(&tok, t.uid).Error; err != nil {
-		return nil, err
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		// A logged out rider has no row, and no session to fall back on.
+		t.cached = nil
+		return nil, gira.ErrNotLoggedIn
 	}
 
-	l := log.New(os.Stderr, fmt.Sprintf("tokenSource[uid:%d] ", t.uid), log.LstdFlags)
-
-	if tok.Token.Valid() {
-		l.Printf("token is valid")
-		return tok.Token, nil
+	session := tok.Session
+	if t.cached != nil && (session == nil || t.cached.Expiry.After(session.Expiry)) {
+		session = t.cached
+	}
+	if session == nil {
+		return nil, gira.ErrNotLoggedIn
 	}
 
-	l.Printf("token is invalid, refreshing")
+	if !force && session.Valid() {
+		l.Printf("session is valid")
+		return session, nil
+	}
+
+	if !session.RefreshValid() {
+		l.Printf("refresh token has expired")
+		return nil, vaimoo.ErrInvalidRefreshToken
+	}
+
+	l.Printf("session needs a refresh")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	newToken, err := t.auth.Refresh(ctx, tok.Token.RefreshToken)
+	newSession, err := t.auth.Refresh(ctx, session.RefreshToken)
 	if err != nil {
 		l.Printf("refresh error: %v", err)
 		return nil, err
 	}
 	l.Printf("refreshed ok")
 
-	tok.Token = newToken
+	t.cached = newSession
+	tok.Session = newSession
 	if err := t.db.Save(&tok).Error; err != nil {
-		l.Printf("save error: %v", err)
-		return nil, err
+		l.Printf("save error, session lives on in memory only: %v", err)
 	}
 
-	return newToken, nil
+	return newSession, nil
 }
 
 func allowlist(chats ...int64) tele.MiddlewareFunc {

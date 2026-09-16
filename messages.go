@@ -44,13 +44,14 @@ How to use this bot:
 
 📍 Send me a location, and I'll show you the nearest bike stations. You can share your location using convenient menu button, or any point via 📎 → Location.
 🅿️ Tap on a station to see available bikes. Or just send station number to view it.
-⚡️ – electric bikes, ⚙️ – regular bikes, 💯 – full battery
+🚲 Send a bike plate, like E2032, to open its unlock menu straight away.
+⚡️ – bikes available, 🆓 – free docks, 💯 – full battery
 
 📋 Tap on a bike to open unlock menu.
 
 ℹ️ I will show you the current trip status, and after returning the bike, I will show you the trip summary.
 🔚 While you have active trip, you can also send me location, I will show you how many docks are available there. _The station information is delayed, so the dock might end up being taken._
-💸 If required, you can pay for the trip using buttons in the chat _(not well-tested)_.
+💸 Gira charges the fare to your account by itself, there is nothing to confirm here.
 📈 Also, I'll ask you to rate the trip afterwards.
 
 ⭐️ You can name your favorite stations, I could list them, and include names in searches for convenience.

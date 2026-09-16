@@ -16,10 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/oauth2"
 	tele "gopkg.in/telebot.v3"
 
-	"github.com/ilyaluk/girabot/internal/emeltls"
 	"github.com/ilyaluk/girabot/internal/gira"
 )
 
@@ -42,10 +40,7 @@ func (s *server) handleWebStations(w http.ResponseWriter, r *http.Request) {
 	var user User
 	s.db.First(&user, uid)
 
-	ts := s.getTokenSource(uid)
-	oauthC := &http.Client{Transport: &oauth2.Transport{Source: ts, Base: emeltls.Transport()}}
-	fbC := newFbTokenClient(oauthC.Transport, ts)
-	girac := gira.New(fbC)
+	girac := gira.New(&http.Client{}, s.getSessionSource(uid))
 
 	stations, err := girac.GetStations(r.Context())
 	if err != nil {

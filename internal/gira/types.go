@@ -8,84 +8,72 @@ import (
 )
 
 type (
-	Serial string
-	Code   string
-
-	StationSerial Serial
-	DockSerial    Serial
-	BikeSerial    Serial
-
-	UserCode         Code
-	StationCode      Code
-	DockCode         Code
-	BikeCode         Code
-	TripCode         Code
-	SubscriptionCode Code
+	// StationSerial identifies a station. It is the VAIMOO docking station id.
+	StationSerial string
+	// TripCode identifies a trip. It is the VAIMOO trip id.
+	TripCode string
 
 	AssetStatus string
-	BikeType    string
 )
 
-var (
-	AssetStatusActive AssetStatus = "active"
-
-	BikeTypeElectric     BikeType = "electric"
-	BikeTypeConventional BikeType = "conventional"
+const (
+	AssetStatusActive   AssetStatus = "active"
+	AssetStatusInactive AssetStatus = "inactive"
 )
 
+// ClientInfo is the rider's account.
 type ClientInfo struct {
-	Code    UserCode
-	Name    string
+	Name  string
+	Email string
+
+	// Balance is the wallet balance in euro.
 	Balance float64
-	Bonus   int
 
 	ActiveSubscriptions []ClientSubscription
 }
 
+// ClientSubscription is one pass the rider holds.
 type ClientSubscription struct {
-	Code   SubscriptionCode
-	User   UserCode
-	Client UserCode
+	Name        string
+	Description string
 
-	SubscriptionStatus string
-	Active             bool
-	ActivationDate     time.Time
-	ExpirationDate     time.Time
-
-	Subscription            string
-	Cost                    float64
-	SubscriptionCode        string
-	SubscriptionName        string
-	SubscriptionDescription string
+	Active         bool
+	ExpirationDate time.Time
 }
 
+// Station is a docking station.
 type Station struct {
-	Code   StationCode
 	Serial StationSerial
 	Status AssetStatus
 
-	Type        string
-	Name        string
+	// Name is "<number> - <location>", e.g. "253 - Avenida da Universidade".
+	Name string
+	// Description is the postal address, which is often less readable than the
+	// location part of Name.
 	Description string
 
 	Latitude  float64
 	Longitude float64
 
-	Docks int
-	Bikes int
+	// Docks is the number of docking points, Bikes the number of bikes the
+	// backend counts as available, FreeDocks the number of empty docks.
+	Docks     int
+	Bikes     int
+	FreeDocks int
 }
 
+// Number returns the station number riders and signage use.
 func (s Station) Number() string {
 	num, _, _ := strings.Cut(s.Name, "-")
 	return strings.TrimSpace(num)
 }
 
+// Location returns the human readable part of the station name.
 func (s Station) Location() string {
-	if s.Description != "" {
+	_, name, ok := strings.Cut(s.Name, "-")
+	if !ok || strings.TrimSpace(name) == "" {
 		return s.Description
 	}
-
-	_, name, _ := strings.Cut(s.Name, "-")
 	return strings.TrimSpace(name)
 }
 
@@ -93,51 +81,21 @@ func (s Station) MapTitle() string {
 	return fmt.Sprintf("Station %s: %s", s.Number(), s.Location())
 }
 
-type Dock struct {
-	Code   DockCode
-	Serial DockSerial
-	Status AssetStatus
-	Parent StationCode
-
-	Number     int
-	LedStatus  string
-	LockStatus string
-
-	Bike *Bike
-}
-
-func (d Dock) ButtonString(isMax bool) string {
-	if d.Bike == nil {
-		return fmt.Sprint(d.Number)
-	}
-	if isMax {
-		return fmt.Sprintf("{%d} %s", d.Number, d.Bike.PrettyString())
-	}
-	return fmt.Sprintf("[%d] %s", d.Number, d.Bike.PrettyString())
-}
-
+// Bike is a bike sitting in a dock. The Gira fleet is electric throughout.
 type Bike struct {
-	Code   BikeCode
-	Serial BikeSerial
-	Status AssetStatus
-	Parent DockCode
+	// Name is the plate printed on the frame, e.g. "E2032".
+	Name string
+	// CommID is the communication id, which is what unlocking a bike needs.
+	CommID string
 
-	Name    string
-	Type    BikeType
 	Battery string
 
-	// set only if returned from GetStationDocks
+	// DockNumber is the dock the bike sits in, zero when unknown.
 	DockNumber int
 }
 
 func (b Bike) PrettyString() string {
-	switch b.Type {
-	case BikeTypeConventional:
-		return fmt.Sprintf("⚙️ %s", b.Name)
-	case BikeTypeElectric:
-		return fmt.Sprintf("⚡️ %s %s", b.Name, b.PrettyBattery())
-	}
-	return fmt.Sprintf("❓ %s", b.Name)
+	return fmt.Sprintf("⚡️ %s %s", b.Name, b.PrettyBattery())
 }
 
 func (b Bike) PrettyBattery() string {
@@ -151,26 +109,36 @@ func (b Bike) PrettyBattery() string {
 	}
 }
 
-func (b Bike) TextString() string {
-	res := fmt.Sprintf("Dock %d; ", b.DockNumber)
-
-	switch b.Type {
-	case BikeTypeConventional:
-		res += fmt.Sprintf("Bike️ %s", b.Name)
-	case BikeTypeElectric:
-		res += fmt.Sprintf("Electric bike %s, battery %s", b.Name, b.TextBattery())
-	default:
-		res += fmt.Sprintf("Unknown bike type %s", b.Name)
+// ButtonString renders the bike for a station keyboard. isMax marks the bike
+// with the highest plate number, which tends to be the newest one.
+func (b Bike) ButtonString(isMax bool) string {
+	if b.DockNumber == 0 {
+		return b.PrettyString()
 	}
-
-	return res
+	if isMax {
+		return fmt.Sprintf("{%d} %s", b.DockNumber, b.PrettyString())
+	}
+	return fmt.Sprintf("[%d] %s", b.DockNumber, b.PrettyString())
 }
 
-// CallbackData returns the callback data for the bike.
-// It contains enough data to show info about bike.
+func (b Bike) TextString() string {
+	var res string
+	if b.DockNumber != 0 {
+		res = fmt.Sprintf("Dock %d; ", b.DockNumber)
+	}
+	return res + fmt.Sprintf("Electric bike %s, battery %s", b.Name, b.TextBattery())
+}
+
+// MaxCallbackDataLen is what a bike's callback data has to fit into. Telegram
+// allows 64 bytes for the whole payload, of which the button's own key and its
+// separator take the rest.
+const MaxCallbackDataLen = 64 - len("unlock_bike") - len("\f|")
+
+// CallbackData returns the callback data for the bike. It carries enough to
+// show the bike and to unlock it without another lookup.
 func (b Bike) CallbackData() string {
 	return strings.Join([]string{
-		string(b.Serial),
+		b.CommID,
 		b.Name,
 		b.Battery,
 		fmt.Sprint(b.DockNumber),
@@ -180,36 +148,32 @@ func (b Bike) CallbackData() string {
 // BikeFromCallbackData parses the callback data and returns the bike.
 func BikeFromCallbackData(data string) (b Bike, err error) {
 	parts := strings.Split(data, "|")
-	if len(parts) != 4 || len(data) > 1024 {
+	if len(parts) != 4 || len(data) > MaxCallbackDataLen {
 		return Bike{}, fmt.Errorf("invalid callback data: %s", data)
 	}
 
 	b = Bike{
-		Serial:  BikeSerial(parts[0]),
+		CommID:  parts[0],
 		Name:    parts[1],
 		Battery: parts[2],
 	}
-	b.DockNumber, _ = strconv.Atoi(parts[3])
-
-	switch b.Name[0] {
-	case 'E':
-		b.Type = BikeTypeElectric
-	case 'C':
-		b.Type = BikeTypeConventional
+	// Without both of these the bike can neither be shown nor unlocked.
+	if b.Name == "" || b.CommID == "" {
+		return Bike{}, fmt.Errorf("invalid callback data: %s", data)
 	}
+	b.DockNumber, _ = strconv.Atoi(parts[3])
 
 	return b, nil
 }
 
 func (b Bike) TextBattery() string {
-	switch b.Battery {
-	case "":
-		return ""
-	default:
-		return b.Battery + "%"
+	if b.Battery == "" {
+		return "unknown"
 	}
+	return b.Battery + "%"
 }
 
+// Number returns the numeric part of the bike plate.
 func (b Bike) Number() int {
 	if len(b.Name) < 2 {
 		return 0
@@ -218,396 +182,82 @@ func (b Bike) Number() int {
 	return num
 }
 
-type Docks []Dock
+// Bikes is a list of bikes available at one station.
+type Bikes []Bike
 
-func (ds Docks) ElectricBikesAvailable() int {
-	var res int
-	for _, d := range ds {
-		if d.Bike != nil && d.Bike.Type == BikeTypeElectric && d.Bike.Status == AssetStatusActive {
-			res++
-		}
-	}
-	return res
-}
-
-func (ds Docks) ConventionalBikesAvailable() int {
-	var res int
-	for _, d := range ds {
-		if d.Bike != nil && d.Bike.Type == BikeTypeConventional && d.Bike.Status == AssetStatusActive {
-			res++
-		}
-	}
-	return res
-}
-
-func (ds Docks) Free() int {
-	var res int
-	for _, d := range ds {
-		if d.Bike == nil && d.Status == AssetStatusActive && d.LedStatus == "green" && d.LockStatus == "unlocked" {
-			res++
-		}
-	}
-	return res
-}
-
-type StationContent struct {
-	Docks []Dock
-}
-
+// Trip is a finished trip.
 type Trip struct {
-	Code       TripCode
-	TripStatus string
+	Code TripCode
 
-	User     UserCode
-	Client   UserCode
-	BikeCode BikeCode
 	BikeName string
 
-	StartLocation     StationCode
-	EndLocation       StationCode
+	StartDate time.Time
+	EndDate   time.Time
+
 	StartLocationName string
 	EndLocationName   string
-	StartDate         time.Time
-	EndDate           time.Time
-	StartOccupation   float64
-	EndOccupation     float64
-	EndTripDock       DockCode
+	// EndStation is the station the trip ended at, zero when unknown. Rating a
+	// trip needs it.
+	EndStation int64
 
-	Distance   float64
-	Cost       float64
-	TotalBonus int
-	CostBonus  int
+	// Distance is the ridden distance in meters.
+	Distance float64
+	// Cost is what the trip cost in euro, already settled against the wallet.
+	Cost float64
+}
 
+// TripRating is a rating the rider gives a finished trip.
+type TripRating struct {
 	Rating  int
-	Photo   string
 	Comment string
 }
 
-type innerClientInfo struct {
-	Code    string
-	Name    string
-	Balance float64
-	Bonus   int32
-
-	// unused, but defined fields
-	//FiscalNumber      string
-	//PaypalReference   string
-	//Address           string
-	//PostalCode        string
-	//City              string
-	//Type              string
-	//TransactionIdBond string
-	//EasypayCustomer   string
-	//LisboaVivaSn      string
-	//NifCountry        string
-	//NumberNavegante   string
-	//Description       string
-	//CreationDate      string
-	//CreatedBy         string
-	//UpdateDate        string
-	//UpdatedBy         string
-	//DefaultOrder      int32
-	//Version           int32
+// ActiveTrip is a trip in progress.
+type ActiveTrip struct {
+	Code      TripCode
+	BikeName  string
+	StartDate time.Time
+	// BikeState is the lock state the bike last reported, e.g. RUNNING.
+	BikeState string
 }
 
-func (i innerClientInfo) export() ClientInfo {
-	return ClientInfo{
-		Code:    UserCode(i.Code),
-		Name:    i.Name,
-		Balance: i.Balance,
-		Bonus:   int(i.Bonus),
-	}
+// TripUpdate is one observation of the rider's trip.
+type TripUpdate struct {
+	Code     TripCode
+	Bike     string
+	Finished bool
+
+	StartDate time.Time
+	EndDate   time.Time
+
+	Cost     float64
+	Distance float64
+
+	// ErrorCode is non-zero when the trip could not be started.
+	ErrorCode int
 }
 
-type innerSubscriptionType struct {
-	Code        string
-	Name        string
-	Description string
-
-	//CreationDate string
-	//CreatedBy    string
-	//UpdateDate   string
-	//UpdatedBy    string
-	//DefaultOrder int32
-	//Version      int32
-}
-
-type innerClientSubscription struct {
-	Code   string
-	User   string
-	Client string
-
-	SubscriptionStatus string
-	Active             bool
-	ActivationDate     string
-	ExpirationDate     string
-
-	Subscription string
-	Cost         float64
-	Type         innerSubscriptionType
-
-	//Name               string
-	//Description        string
-	//CreationDate       string
-	//CreatedBy          string
-	//UpdateDate         string
-	//UpdatedBy          string
-	//DefaultOrder       int32
-	//Version            int32
-}
-
-func (i innerClientSubscription) export() ClientSubscription {
-	activationDate, _ := time.Parse(time.RFC3339, i.ActivationDate)
-	expirationDate, _ := time.Parse(time.RFC3339, i.ExpirationDate)
-
-	return ClientSubscription{
-		Code:   SubscriptionCode(i.Code),
-		User:   UserCode(i.User),
-		Client: UserCode(i.Client),
-
-		SubscriptionStatus: i.SubscriptionStatus,
-		Active:             i.Active,
-		ActivationDate:     activationDate,
-		ExpirationDate:     expirationDate,
-
-		Subscription:            i.Subscription,
-		Cost:                    i.Cost,
-		SubscriptionCode:        i.Type.Code,
-		SubscriptionName:        i.Type.Name,
-		SubscriptionDescription: i.Type.Description,
-	}
-}
-
-type innerStation struct {
-	Docks        int32
-	Bikes        int32
-	Stype        string
-	SerialNumber string
-	AssetStatus  string
-	Latitude     float64
-	Longitude    float64
-	Code         string
-	Name         string
-	Description  string
-
-	//AssetType      string
-	//AssetCondition string
-	//Parent         string
-	//Warehouse      string
-	//Zone           string
-	//Location       string
-	//CreationDate   string
-	//CreatedBy      string
-	//UpdateDate     string
-	//UpdatedBy      string
-	//DefaultOrder   int32
-	//Version        int32
-}
-
-func (i innerStation) export() Station {
-	return Station{
-		Code:   StationCode(i.Code),
-		Serial: StationSerial(i.SerialNumber),
-		Status: AssetStatus(i.AssetStatus),
-
-		Name:        i.Name,
-		Description: i.Description,
-		Type:        i.Stype,
-
-		Latitude:  i.Latitude,
-		Longitude: i.Longitude,
-
-		Docks: int(i.Docks),
-		Bikes: int(i.Bikes),
-	}
-}
-
-type innerDock struct {
-	LedStatus    string
-	LockStatus   string
-	SerialNumber string
-	AssetStatus  string
-	Parent       string
-	Code         string
-	Name         string
-
-	//AssetType      string
-	//AssetCondition string
-	//Warehouse      string
-	//Zone           string
-	//Location       string
-	//Latitude       float64
-	//Longitude      float64
-	//Description    string
-	//CreationDate   string
-	//CreatedBy      string
-	//UpdateDate     string
-	//UpdatedBy      string
-	//DefaultOrder   int32
-	//Version        int32
-}
-
-func (i innerDock) export() Dock {
-	num, _ := strconv.Atoi(i.Name)
-
-	return Dock{
-		Code:   DockCode(i.Code),
-		Serial: DockSerial(i.SerialNumber),
-		Status: AssetStatus(i.AssetStatus),
-		Parent: StationCode(i.Parent),
-
-		Number:     num,
-		LedStatus:  i.LedStatus,
-		LockStatus: i.LockStatus,
-	}
-}
-
-type innerBike struct {
-	Type         string
-	Battery      string
-	SerialNumber string
-	AssetStatus  string
-	Parent       string
-	Code         string
-	Name         string
-
-	//AssetType      string
-	//AssetCondition string
-	//Warehouse      string
-	//Zone           string
-	//Location       string
-	//Latitude       float64
-	//Longitude      float64
-	//Kms            string
-	//Description    string
-	//CreationDate   string
-	//CreatedBy      string
-	//UpdateDate     string
-	//UpdatedBy      string
-	//DefaultOrder   int32
-	//Version        int32
-}
-
-func (i innerBike) export() Bike {
-	b := Bike{
-		Code:   BikeCode(i.Code),
-		Serial: BikeSerial(i.SerialNumber),
-		Status: AssetStatus(i.AssetStatus),
-		Parent: DockCode(i.Parent),
-
-		Name:    i.Name,
-		Type:    BikeType(i.Type),
-		Battery: i.Battery,
+// PrettyDuration returns the duration of the trip in a human-readable format.
+// If the trip is still ongoing, the current time is used as the end time.
+func (t TripUpdate) PrettyDuration() string {
+	endTs := t.EndDate
+	if endTs.IsZero() {
+		endTs = time.Now()
 	}
 
-	if b.Type == "" {
-		// sometimes the type is not set, so we try to infer it from the name
-		switch b.Name[0] {
-		case 'E':
-			b.Type = BikeTypeElectric
-		case 'C':
-			b.Type = BikeTypeConventional
-		}
+	// A start the backend never gave would otherwise count from the year 1.
+	var duration int
+	if !t.StartDate.IsZero() {
+		duration = int(endTs.Sub(t.StartDate).Seconds())
 	}
-
-	if b.Type == BikeTypeElectric && b.Battery == "" {
-		// sometimes the battery is not set
-		b.Battery = "?"
+	if duration < 0 {
+		duration = 0
 	}
+	h, m, s := duration/3600, (duration/60)%60, duration%60
 
-	return b
-}
-
-type innerTrip struct {
-	User            string
-	Asset           string
-	StartDate       string
-	EndDate         string
-	StartLocation   string
-	EndLocation     string
-	Distance        float64
-	Rating          int32
-	Photo           string
-	Cost            float64
-	StartOccupation float64
-	EndOccupation   float64
-	TotalBonus      int32
-	Client          string
-	CostBonus       int32
-	Comment         string
-	EndTripDock     string
-	TripStatus      string
-	Code            string
-	Name            string
-
-	//CompensationTime bool
-	//Description      string
-	//CreationDate     string
-	//CreatedBy        string
-	//UpdateDate       string
-	//UpdatedBy        string
-	//DefaultOrder     int32
-	//Version          int32
-}
-
-func (i innerTrip) export() Trip {
-	startTime, _ := time.Parse(time.RFC3339, i.StartDate)
-	endTime, _ := time.Parse(time.RFC3339, i.EndDate)
-
-	return Trip{
-		User:            UserCode(i.User),
-		BikeCode:        BikeCode(i.Asset),
-		StartDate:       startTime,
-		EndDate:         endTime,
-		StartLocation:   StationCode(i.StartLocation),
-		EndLocation:     StationCode(i.EndLocation),
-		Distance:        i.Distance,
-		Rating:          int(i.Rating),
-		Photo:           i.Photo,
-		Cost:            i.Cost,
-		StartOccupation: i.StartOccupation,
-		EndOccupation:   i.EndOccupation,
-		TotalBonus:      int(i.TotalBonus),
-		Client:          UserCode(i.Client),
-		CostBonus:       int(i.CostBonus),
-		Comment:         i.Comment,
-		EndTripDock:     DockCode(i.EndTripDock),
-		TripStatus:      i.TripStatus,
-		Code:            TripCode(i.Code),
+	durStr := fmt.Sprintf("%02d:%02d", m, s)
+	if h > 0 {
+		durStr = fmt.Sprintf("%d:%02d:%02d", h, m, s)
 	}
-}
-
-type innerTripDetail struct {
-	Code          string
-	StartDate     string
-	EndDate       string
-	Rating        int32
-	BikeName      string
-	StartLocation string
-	EndLocation   string
-	Bonus         int32
-	UsedPoints    int32
-	Cost          float64
-	BikeType      string
-}
-
-func (i innerTripDetail) export() Trip {
-	startTime, _ := time.Parse(time.RFC3339, i.StartDate)
-	endTime, _ := time.Parse(time.RFC3339, i.EndDate)
-
-	return Trip{
-		Code:      TripCode(i.Code),
-		StartDate: startTime,
-		EndDate:   endTime,
-		Rating:    int(i.Rating),
-
-		// TODO: convert to asset IDs
-		BikeName:          i.BikeName,
-		StartLocationName: i.StartLocation,
-		EndLocationName:   i.EndLocation,
-
-		TotalBonus: int(i.Bonus),
-		CostBonus:  int(i.UsedPoints),
-		Cost:       i.Cost,
-	}
+	return durStr
 }
