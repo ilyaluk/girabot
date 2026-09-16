@@ -24,15 +24,30 @@ Set -domain and -url-prefix accordingly, and confugure your reverse proxy to for
 
 ## Gira API details
 
-Gira has two API endpoints:
+Gira moved to the VAIMOO platform in 2026. The bot now talks to three services:
 
-- Auth API
-- GraphQL API
+- EMEL login, at `login.emel.pt`
+- VAIMOO consumer API, at `emel-consumerapp.vaimoo.com`
+- a public Firestore database that holds live station and bike state
 
-Auth API is implemented in internal/giraauth package. It is used to get a JWT token for GraphQL API.
-It exchanges login-password for an access and refresh tokens pair. Refresh token is valid for 7 days, while access token for 2 minutes.
+Login is implemented in internal/vaimoo. EMEL still owns the credentials, so an
+email and a password are traded for an EMEL token, that token for a single use
+code, and the code for a VAIMOO session. Access tokens last 5 minutes, refresh
+tokens 5 days, and every refresh rotates both.
 
-GraphQL API is implemented in internal/gira package. The main logic lies here.
-GraphQL API is what you would expect and has introspection, so it is easy to understand what queries it supports. Authentication is done via standard HTTP authorization/bearer header.
+The VAIMOO API serves the account, the wallet, subscriptions, trips and trip
+ratings. Unlocking a bike is what starts a trip, in a single call naming the
+bike by its communication id. Authentication is the access token in the
+Authorization header, with no Bearer prefix. Requests also carry an AppId header
+and a userId query parameter.
 
-Beware that APIs return errors half of the time, so be prepared to retry requests.
+Stations and bikes are not in that API. The official app reads them straight out
+of a Firestore database that allows unauthenticated reads with the app's public
+API key, which internal/firestore queries over the REST API. Gira shares the
+database with other VAIMOO cities, so every query is scoped to the Gira tenant.
+
+internal/gira puts both sources together and is where the bot's logic lives.
+There is no push channel for trips any more, so a running trip is polled. A bike
+publishes its own state to Firestore sooner than the trip endpoint reacts, which
+is used to poll harder around the moment a ride looks finished, but only the trip
+endpoint decides whether a trip is running.
